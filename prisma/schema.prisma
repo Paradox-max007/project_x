@@ -1,0 +1,356 @@
+// ASM Manpower Management System — Prisma schema (SQLite)
+// Adapted from the Supabase/PostgreSQL spec to this environment's stack.
+// Sensitive fields (passport_number, id_number, uniform document numbers)
+// are stored AES-256-GCM encrypted via src/lib/crypto.ts.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// AUTH / ADMIN USERS / PERMISSIONS
+// ---------------------------------------------------------------------------
+
+model AdminUser {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  fullName     String
+  // super_admin | admin (future: hr, operations, site_supervisor, client, employee)
+  role         String   @default("admin")
+  isActive     Boolean  @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  sessions       Session[]
+  permissions    Permission[]
+  notifications  Notification[]
+  auditLogs      AuditLog[]
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  user      AdminUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+// Menu-level permissions. super_admin bypasses this table entirely.
+model Permission {
+  id      String  @id @default(cuid())
+  userId  String
+  user    AdminUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+  menuKey String
+  allowed Boolean @default(true)
+
+  @@unique([userId, menuKey])
+}
+
+// ---------------------------------------------------------------------------
+// SITES
+// ---------------------------------------------------------------------------
+
+model Site {
+  id           String   @id @default(cuid())
+  name         String   @unique
+  clientName   String
+  projectName  String
+  isActive     Boolean  @default(true)
+  // one active team leader per site
+  teamLeaderId String?  @unique
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  teamLeader      Employee?             @relation("SiteTeamLeader", fields: [teamLeaderId], references: [id], onDelete: SetNull)
+  employees       Employee[]            @relation("EmployeeSite")
+  attendance      Attendance[]
+  siteHistory     EmployeeSiteHistory[]
+  uniformIssues   UniformIssue[]
+}
+
+// ---------------------------------------------------------------------------
+// EMPLOYEES
+// ---------------------------------------------------------------------------
+
+model Employee {
+  id               String    @id @default(cuid())
+  // e.g. ASM-2026-001 — generated server-side only, never reused
+  employeeCode     String    @unique
+  fullName         String
+  nationality      String
+  dateOfBirth      DateTime?
+  phone            String?
+  email            String?
+  address          String?
+  emergencyContact String?
+  position         String
+  joinDate         DateTime?
+  companyName      String?
+  // AES-256-GCM encrypted at rest
+  passportNumber   String?
+  passportStatus   String?
+  idNumber         String?
+  idStatus         String?
+  photoUrl         String?
+  rating           Float     @default(5)
+  // active | pending_deletion | deleted
+  status           String    @default("active")
+  currentSiteId    String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  currentSite    Site?                  @relation("EmployeeSite", fields: [currentSiteId], references: [id], onDelete: SetNull)
+  leaderOfSite   Site?                  @relation("SiteTeamLeader")
+  siteHistory    EmployeeSiteHistory[]
+  attendance     Attendance[]
+  leaveRequests  LeaveRequest[]
+  warnings       Warning[]
+  fines          Fine[]
+  uniformIssues  UniformIssue[]
+  cancellations  CancellationRequest[]
+
+  @@index([fullName])
+  @@index([employeeCode])
+  @@index([status])
+  @@index([currentSiteId])
+  @@index([nationality])
+  @@index([position])
+}
+
+model EmployeeSiteHistory {
+  id         String   @id @default(cuid())
+  employeeId String
+  siteId     String
+  startDate  DateTime
+  endDate    DateTime?
+  reason     String?
+  // acting admin display name (denormalized for audit safety)
+  createdByName String?
+  createdBy   String?
+  createdAt   DateTime @default(now())
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  site     Site     @relation(fields: [siteId], references: [id], onDelete: Cascade)
+
+  @@index([employeeId])
+  @@index([siteId])
+}
+
+// ---------------------------------------------------------------------------
+// ATTENDANCE
+// ---------------------------------------------------------------------------
+
+model Attendance {
+  id             String   @id @default(cuid())
+  employeeId     String
+  siteId         String?
+  // stored as UTC midnight of the calendar day
+  attendanceDate DateTime
+  // present | absent | no_site | overtime | not_marked | leave | holiday
+  status         String
+  overtimeHours  Float?
+  notes          String?
+  createdByName  String?
+  updatedByName  String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  site     Site?    @relation(fields: [siteId], references: [id], onDelete: SetNull)
+
+  @@unique([employeeId, attendanceDate])
+  @@index([attendanceDate])
+  @@index([employeeId])
+  @@index([siteId])
+}
+
+// ---------------------------------------------------------------------------
+// LEAVE
+// ---------------------------------------------------------------------------
+
+model LeaveRequest {
+  id           String    @id @default(cuid())
+  employeeId   String
+  // casual | sick | annual | emergency | marriage | other
+  leaveType    String
+  otherType    String?
+  startDate    DateTime
+  endDate      DateTime
+  totalDays    Int
+  reason       String?
+  // pending | approved | rejected | cancelled
+  status       String    @default("pending")
+  createdByName String?
+  reviewedByName String?
+  reviewedAt   DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([employeeId])
+  @@index([status])
+  @@index([startDate])
+}
+
+// ---------------------------------------------------------------------------
+// WARNINGS / FINES
+// ---------------------------------------------------------------------------
+
+model Warning {
+  id              String   @id @default(cuid())
+  employeeId      String
+  reason          String
+  isAutoGenerated Boolean  @default(false)
+  // JSON string array of absent dates that triggered the warning
+  absentDates     String?
+  ratingPenalty   Float    @default(0.5)
+  createdByName   String?
+  createdAt       DateTime @default(now())
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([employeeId])
+}
+
+model Fine {
+  id             String   @id @default(cuid())
+  employeeId     String
+  reason         String
+  amount         Float
+  currency       String   @default("SAR")
+  ratingPenalty  Float    @default(1.0)
+  createdByName  String?
+  createdAt      DateTime @default(now())
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([employeeId])
+}
+
+// ---------------------------------------------------------------------------
+// CANCELLATION (EMPLOYEE DELETION) REQUESTS
+// ---------------------------------------------------------------------------
+
+model CancellationRequest {
+  id              String    @id @default(cuid())
+  employeeId      String
+  reason          String
+  // pending | approved | rejected
+  status          String    @default("pending")
+  requestedByName String?
+  reviewedByName  String?
+  reviewedAt      DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([employeeId])
+  @@index([status])
+}
+
+// ---------------------------------------------------------------------------
+// UNIFORM / PPE REGISTRY
+// ---------------------------------------------------------------------------
+
+model UniformItem {
+  id          String  @id @default(cuid())
+  name        String
+  description String?
+  isActive    Boolean @default(true)
+
+  issueItems UniformIssueItem[]
+}
+
+model UniformIssue {
+  id             String   @id @default(cuid())
+  // e.g. UN-0001
+  uniformCode    String   @unique
+  // e.g. TKN-0001
+  tokenNumber    String   @unique
+  employeeId     String
+  documentType   String
+  documentNumber String
+  siteId         String?
+  teamLeaderName String?
+  isRenewal      Boolean  @default(false)
+  previousIssueId String?
+  issuedAt       DateTime @default(now())
+  renewalDate    DateTime
+  createdByName  String?
+  createdAt      DateTime @default(now())
+
+  employee Employee           @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  site     Site?              @relation(fields: [siteId], references: [id], onDelete: SetNull)
+  items    UniformIssueItem[]
+
+  @@index([employeeId])
+  @@index([tokenNumber])
+  @@index([renewalDate])
+}
+
+model UniformIssueItem {
+  id       String @id @default(cuid())
+  issueId  String
+  itemId   String
+  quantity Int    @default(1)
+
+  issue UniformIssue @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  item  UniformItem  @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@unique([issueId, itemId])
+}
+
+// ---------------------------------------------------------------------------
+// NOTIFICATIONS / AUDIT / SETTINGS
+// ---------------------------------------------------------------------------
+
+model Notification {
+  id            String   @id @default(cuid())
+  recipientId   String
+  // leave_request | cancellation_request | warning | fine | uniform_renewal | system
+  type          String
+  title         String
+  message       String
+  referenceType String?
+  referenceId   String?
+  read          Boolean  @default(false)
+  createdAt     DateTime @default(now())
+
+  recipient AdminUser @relation(fields: [recipientId], references: [id], onDelete: Cascade)
+
+  @@index([recipientId, read])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String?
+  actor      AdminUser? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  actorName  String
+  action     String
+  entity     String
+  entityId   String?
+  // JSON snapshots
+  before     String?
+  after      String?
+  createdAt  DateTime @default(now())
+
+  @@index([entity])
+  @@index([createdAt])
+}
+
+model SystemSetting {
+  key   String @id
+  value String
+}

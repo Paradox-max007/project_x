@@ -1,0 +1,635 @@
+     1→/**
+     2→ * ASM Manpower Management System — database seed.
+     3→ * Run with: bun prisma/seed.ts
+     4→ */
+     5→import { PrismaClient } from "@prisma/client";
+     6→import { hashPassword, encryptField } from "../src/lib/crypto";
+     7→
+     8→const db = new PrismaClient();
+     9→
+    10→// Deterministic PRNG so seeded data is stable
+    11→let seedState = 42;
+    12→function rand(): number {
+    13→  seedState = (seedState * 1103515245 + 12345) % 2147483648;
+    14→  return seedState / 2147483648;
+    15→}
+    16→function pick<T>(arr: T[]): T {
+    17→  return arr[Math.floor(rand() * arr.length)];
+    18→}
+    19→function randInt(min: number, max: number): number {
+    20→  return Math.floor(rand() * (max - min + 1)) + min;
+    21→}
+    22→
+    23→function ymd(d: Date): string {
+    24→  return d.toISOString().slice(0, 10);
+    25→}
+    26→function utc(year: number, month: number, day: number): Date {
+    27→  return new Date(Date.UTC(year, month, day));
+    28→}
+    29→function addMonths(date: Date, months: number): Date {
+    30→  const d = new Date(date);
+    31→  d.setUTCMonth(d.getUTCMonth() + months);
+    32→  return d;
+    33→}
+    34→
+    35→async function main() {
+    36→  console.log("Seeding ASM Manpower Management System...");
+    37→
+    38→  // ---- wipe (order matters for FKs) -------------------------------------
+    39→  await db.auditLog.deleteMany();
+    40→  await db.notification.deleteMany();
+    41→  await db.uniformIssueItem.deleteMany();
+    42→  await db.uniformIssue.deleteMany();
+    43→  await db.uniformItem.deleteMany();
+    44→  await db.cancellationRequest.deleteMany();
+    45→  await db.fine.deleteMany();
+    46→  await db.warning.deleteMany();
+    47→  await db.leaveRequest.deleteMany();
+    48→  await db.attendance.deleteMany();
+    49→  await db.employeeSiteHistory.deleteMany();
+    50→  await db.site.deleteMany();
+    51→  await db.employee.deleteMany();
+    52→  await db.permission.deleteMany();
+    53→  await db.session.deleteMany();
+    54→  await db.adminUser.deleteMany();
+    55→  await db.systemSetting.deleteMany();
+    56→
+    57→  // ---- system settings ---------------------------------------------------
+    58→  const settings: Record<string, string> = {
+    59→    companyName: "ASM Manpower Solutions",
+    60→    companyLogo: "",
+    61→    companyAddress: "King Fahd Road, Al Olaya District, Riyadh 12211, Saudi Arabia",
+    62→    companyPhone: "+966 11 234 5678",
+    63→    currency: "SAR",
+    64→    timezone: "Asia/Riyadh",
+    65→    employeeIdPrefix: "ASM",
+    66→    warningRatingPenalty: "0.5",
+    67→    fineRatingPenalty: "1",
+    68→    uniformRenewalMonths: "6",
+    69→    warningAbsenceThreshold: "3",
+    70→  };
+    71→  for (const [key, value] of Object.entries(settings)) {
+    72→    await db.systemSetting.create({ data: { key, value } });
+    73→  }
+    74→
+    75→  // ---- admin users --------------------------------------------------------
+    76→  const superAdmin = await db.adminUser.create({
+    77→    data: {
+    78→      email: "superadmin@asm.com",
+    79→      passwordHash: hashPassword("SuperAdmin@123"),
+    80→      fullName: "Faisal Al-Saud",
+    81→      role: "super_admin",
+    82→      isActive: true,
+    83→    },
+    84→  });
+    85→
+    86→  const hrAdmin = await db.adminUser.create({
+    87→    data: {
+    88→      email: "hr.admin@asm.com",
+    89→      passwordHash: hashPassword("Admin@123"),
+    90→      fullName: "Sara Al-Harbi",
+    91→      role: "admin",
+    92→      isActive: true,
+    93→    },
+    94→  });
+    95→
+    96→  const opsAdmin = await db.adminUser.create({
+    97→    data: {
+    98→      email: "ops.admin@asm.com",
+    99→      passwordHash: hashPassword("Admin@123"),
+   100→      fullName: "Mohammed Al-Otaibi",
+   101→      role: "admin",
+   102→      isActive: true,
+   103→    },
+   104→  });
+   105→
+   106→  // HR admin: employees/attendance/leave/warnings/fines/notifications allowed
+   107→  const hrPerms: [string, boolean][] = [
+   108→    ["employees", true],
+   109→    ["sites", false],
+   110→    ["attendance", true],
+   111→    ["leave_requests", true],
+   112→    ["cancellation_requests", false],
+   113→    ["warnings", true],
+   114→    ["fines", true],
+   115→    ["notifications", true],
+   116→    ["administrators", false],
+   117→    ["audit_logs", false],
+   118→    ["settings", false],
+   119→  ];
+   120→  for (const [menuKey, allowed] of hrPerms) {
+   121→    await db.permission.create({
+   122→      data: { userId: hrAdmin.id, menuKey, allowed },
+   123→    });
+   124→  }
+   125→
+   126→  // Ops admin: sites/attendance/employees allowed, no fines/warnings
+   127→  const opsPerms: [string, boolean][] = [
+   128→    ["employees", true],
+   129→    ["sites", true],
+   130→    ["attendance", true],
+   131→    ["leave_requests", false],
+   132→    ["cancellation_requests", true],
+   133→    ["warnings", false],
+   134→    ["fines", false],
+   135→    ["notifications", true],
+   136→    ["administrators", false],
+   137→    ["audit_logs", false],
+   138→    ["settings", false],
+   139→  ];
+   140→  for (const [menuKey, allowed] of opsPerms) {
+   141→    await db.permission.create({
+   142→      data: { userId: opsAdmin.id, menuKey, allowed },
+   143→    });
+   144→  }
+   145→
+   146→  // ---- uniform items ------------------------------------------------------
+   147→  const itemDefs: [string, string][] = [
+   148→    ["Uniform", "Standard company uniform set"],
+   149→    ["Shoes", "Standard work shoes"],
+   150→    ["Helmet", "Safety helmet"],
+   151→    ["Bottle", "Water bottle"],
+   152→    ["Safety Jacket", "High-visibility safety jacket"],
+   153→    ["Gloves", "Protective work gloves"],
+   154→    ["Safety Shoes", "Steel-toe safety shoes"],
+   155→    ["Vest", "Reflective vest"],
+   156→    ["Other", "Other PPE equipment"],
+   157→  ];
+   158→  const uniformItems: Record<string, string> = {};
+   159→  for (const [name, desc] of itemDefs) {
+   160→    const item = await db.uniformItem.create({
+   161→      data: { name, description: desc, isActive: true },
+   162→    });
+   163→    uniformItems[name] = item.id;
+   164→  }
+   165→
+   166→  // ---- sites ---------------------------------------------------------------
+   167→  const siteDefs = [
+   168→    { name: "Al Noor Tower", clientName: "Al Noor Real Estate", projectName: "Residential Tower – Phase 3" },
+   169→    { name: "Jeddah Waterfront Mall", clientName: "Red Sea Retail Group", projectName: "Mall Fit-Out" },
+   170→    { name: "Dammam Industrial Complex", clientName: "Eastern Petrochem Co.", projectName: "Plant Maintenance" },
+   171→    { name: "NEOM Camp 7", clientName: "NEOM Development Co.", projectName: "Site Preparation Works" },
+   172→    { name: "KAFD Phase 2", clientName: "KAFD Authority", projectName: "Facade & Finishing" },
+   173→    { name: "Makkah Hotel Renovation", clientName: "Dar Al Tawaf Hotels", projectName: "Interior Renovation" },
+   174→  ];
+   175→  const sites: Record<string, string> = {};
+   176→  for (const s of siteDefs) {
+   177→    const site = await db.site.create({
+   178→      data: { ...s, isActive: true },
+   179→    });
+   180→    sites[s.name] = site.id;
+   181→  }
+   182→  // Makkah site is inactive
+   183→  await db.site.update({
+   184→    where: { name: "Makkah Hotel Renovation" },
+   185→    data: { isActive: false },
+   186→  });
+   187→
+   188→  // ---- employees ------------------------------------------------------------
+   189→  type EmpSeed = {
+   190→    fullName: string;
+   191→    nationality: string;
+   192→    position: string;
+   193→    company: string;
+   194→    site: string | null;
+   195→    rating: number;
+   196→    phone: string;
+   197→    passport: string;
+   198→    idNumber: string;
+   199→    passportStatus: string;
+   200→    idStatus: string;
+   201→  };
+   202→
+   203→  const employeesSeed: EmpSeed[] = [
+   204→    // Al Noor Tower (6 + leader)
+   205→    { fullName: "Rahul Sharma", nationality: "Indian", position: "Site Foreman", company: "ASM Manpower Solutions", site: "Al Noor Tower", rating: 4.5, phone: "+966 50 120 3001", passport: "N1234567", idNumber: "2411028765", passportStatus: "valid", idStatus: "valid" },
+   206→    { fullName: "Arjun Patel", nationality: "Indian", position: "Steel Fixer", company: "ASM Manpower Solutions", site: "Al Noor Tower", rating: 5, phone: "+966 50 120 3002", passport: "N1234568", idNumber: "2411028766", passportStatus: "valid", idStatus: "valid" },
+   207→    { fullName: "Kumar Sangakkara", nationality: "Sri Lankan", position: "Mason", company: "Gulf Services Co.", site: "Al Noor Tower", rating: 4.5, phone: "+966 50 120 3003", passport: "S7654321", idNumber: "2411028767", passportStatus: "valid", idStatus: "valid" },
+   208→    { fullName: "Ahmed Hassan", nationality: "Egyptian", position: "Electrician", company: "ASM Manpower Solutions", site: "Al Noor Tower", rating: 4, phone: "+966 50 120 3004", passport: "E9911223", idNumber: "2411028768", passportStatus: "valid", idStatus: "renewal_due" },
+   209→    { fullName: "Bimal Thapa", nationality: "Nepali", position: "Carpenter", company: "ASM Manpower Solutions", site: "Al Noor Tower", rating: 5, phone: "+966 50 120 3005", passport: "P5544332", idNumber: "2411028769", passportStatus: "valid", idStatus: "valid" },
+   210→    { fullName: "Joseph Mwangi", nationality: "Kenyan", position: "Helper", company: "Gulf Services Co.", site: "Al Noor Tower", rating: 3.5, phone: "+966 50 120 3006", passport: "K2211334", idNumber: "2411028770", passportStatus: "expiring", idStatus: "valid" },
+   211→    // Jeddah Waterfront Mall (5 + leader)
+   212→    { fullName: "Deepak Gurung", nationality: "Nepali", position: "Team Leader", company: "ASM Manpower Solutions", site: "Jeddah Waterfront Mall", rating: 4.5, phone: "+966 50 220 4001", passport: "P6677889", idNumber: "2411028771", passportStatus: "valid", idStatus: "valid" },
+   213→    { fullName: "Miguel Santos", nationality: "Filipino", position: "AC Technician", company: "ASM Manpower Solutions", site: "Jeddah Waterfront Mall", rating: 5, phone: "+966 50 220 4002", passport: "F8899001", idNumber: "2411028772", passportStatus: "valid", idStatus: "valid" },
+   214→    { fullName: "Ravi Fernando", nationality: "Sri Lankan", position: "Painter", company: "Gulf Services Co.", site: "Jeddah Waterfront Mall", rating: 4.5, phone: "+966 50 220 4003", passport: "S1122334", idNumber: "2411028773", passportStatus: "valid", idStatus: "valid" },
+   215→    { fullName: "Md. Rafiq Islam", nationality: "Bangladeshi", position: "Tile Fixer", company: "ASM Manpower Solutions", site: "Jeddah Waterfront Mall", rating: 3.5, phone: "+966 50 220 4004", passport: "B4455667", idNumber: "2411028774", passportStatus: "valid", idStatus: "valid" },
+   216→    { fullName: "Suresh Nair", nationality: "Indian", position: "Plumber", company: "ASM Manpower Solutions", site: "Jeddah Waterfront Mall", rating: 5, phone: "+966 50 220 4005", passport: "N3344556", idNumber: "2411028775", passportStatus: "valid", idStatus: "valid" },
+   217→    // Dammam Industrial Complex (4 + leader)
+   218→    { fullName: "Ibrahim Kaya", nationality: "Turkish", position: "Maintenance Supervisor", company: "ASM Manpower Solutions", site: "Dammam Industrial Complex", rating: 4.5, phone: "+966 50 330 5001", passport: "T7788990", idNumber: "2411028776", passportStatus: "valid", idStatus: "valid" },
+   219→    { fullName: "Shahid Mahmood", nationality: "Pakistani", position: "Welder", company: "Eastern Contracting", site: "Dammam Industrial Complex", rating: 4, phone: "+966 50 330 5002", passport: "P9900112", idNumber: "2411028777", passportStatus: "valid", idStatus: "valid" },
+   220→    { fullName: "Anil Kumar", nationality: "Indian", position: "Scaffolder", company: "Eastern Contracting", site: "Dammam Industrial Complex", rating: 4.5, phone: "+966 50 330 5003", passport: "N6677812", idNumber: "2411028778", passportStatus: "valid", idStatus: "valid" },
+   221→    { fullName: "Tek Bahadur", nationality: "Nepali", position: "Helper", company: "ASM Manpower Solutions", site: "Dammam Industrial Complex", rating: 3, phone: "+966 50 330 5004", passport: "P1122983", idNumber: "2411028779", passportStatus: "valid", idStatus: "valid" },
+   222→    // NEOM Camp 7 (4 + leader)
+   223→    { fullName: "Osama Farouk", nationality: "Egyptian", position: "Safety Officer", company: "ASM Manpower Solutions", site: "NEOM Camp 7", rating: 5, phone: "+966 50 440 6001", passport: "E3344112", idNumber: "2411028780", passportStatus: "valid", idStatus: "valid" },
+   224→    { fullName: "Sanjay Rai", nationality: "Nepali", position: "Steel Fixer", company: "ASM Manpower Solutions", site: "NEOM Camp 7", rating: 4, phone: "+966 50 440 6002", passport: "P5566778", idNumber: "2411028781", passportStatus: "valid", idStatus: "valid" },
+   225→    { fullName: "Dinesh Chhetri", nationality: "Nepali", position: "Mason", company: "ASM Manpower Solutions", site: "NEOM Camp 7", rating: 4.5, phone: "+966 50 440 6003", passport: "P9988776", idNumber: "2411028782", passportStatus: "valid", idStatus: "valid" },
+   226→    { fullName: "Grace Wanjiru", nationality: "Kenyan", position: "Cleaner", company: "Gulf Services Co.", site: "NEOM Camp 7", rating: 4.5, phone: "+966 50 440 6004", passport: "K1122334", idNumber: "2411028783", passportStatus: "valid", idStatus: "valid" },
+   227→    // KAFD Phase 2 (3)
+   228→    { fullName: "Vikram Singh", nationality: "Indian", position: "Glazier", company: "ASM Manpower Solutions", site: "KAFD Phase 2", rating: 4, phone: "+966 50 550 7001", passport: "N8899001", idNumber: "2411028784", passportStatus: "valid", idStatus: "valid" },
+   229→    { fullName: "Hassan Ali", nationality: "Pakistani", position: "Carpenter", company: "ASM Manpower Solutions", site: "KAFD Phase 2", rating: 4.5, phone: "+966 50 550 7002", passport: "P2233445", idNumber: "2411028785", passportStatus: "valid", idStatus: "valid" },
+   230→    { fullName: "Ronel Cruz", nationality: "Filipino", position: "Electrician", company: "Gulf Services Co.", site: "KAFD Phase 2", rating: 4, phone: "+966 50 550 7003", passport: "F6655443", idNumber: "2411028786", passportStatus: "renewal_due", idStatus: "valid" },
+   231→    // Idle (3)
+   232→    { fullName: "Anwar Hossain", nationality: "Bangladeshi", position: "Helper", company: "ASM Manpower Solutions", site: null, rating: 4.5, phone: "+966 50 660 8001", passport: "B7788990", idNumber: "2411028787", passportStatus: "valid", idStatus: "valid" },
+   233→    { fullName: "Pemba Sherpa", nationality: "Nepali", position: "Scaffolder", company: "ASM Manpower Solutions", site: null, rating: 5, phone: "+966 50 660 8002", passport: "P3344556", idNumber: "2411028788", passportStatus: "valid", idStatus: "valid" },
+   234→    { fullName: "Youssef Amr", nationality: "Egyptian", position: "Driver", company: "ASM Manpower Solutions", site: null, rating: 4, phone: "+966 50 660 8003", passport: "E5566778", idNumber: "2411028789", passportStatus: "valid", idStatus: "valid" },
+   235→  ];
+   236→
+   237→  const year = new Date().getUTCFullYear();
+   238→  const employeeIds: string[] = [];
+   239→  let counter = 1;
+   240→  for (const e of employeesSeed) {
+   241→    const code = `ASM-${year}-${String(counter).padStart(3, "0")}`;
+   242→    counter += 1;
+   243→    const joinMonthsAgo = randInt(6, 36);
+   244→    const joinDate = utc(year, new Date().getUTCMonth() - joinMonthsAgo, randInt(1, 27));
+   245→    const dob = utc(randInt(1978, 2000), randInt(0, 11), randInt(1, 28));
+   246→    const emp = await db.employee.create({
+   247→      data: {
+   248→        employeeCode: code,
+   249→        fullName: e.fullName,
+   250→        nationality: e.nationality,
+   251→        dateOfBirth: dob,
+   252→        phone: e.phone,
+   253→        email: null,
+   254→        address: `${pick(["Al Batha", "Al Malaz", "Al Naseem", "Al Olaya"])} District, Riyadh`,
+   255→        emergencyContact: `+966 5${randInt(0, 5)} ${randInt(100, 999)} ${randInt(1000, 9999)}`,
+   256→        position: e.position,
+   257→        joinDate,
+   258→        companyName: e.company,
+   259→        passportNumber: encryptField(e.passport),
+   260→        passportStatus: e.passportStatus,
+   261→        idNumber: encryptField(e.idNumber),
+   262→        idStatus: e.idStatus,
+   263→        rating: e.rating,
+   264→        status: "active",
+   265→        currentSiteId: e.site ? sites[e.site] : null,
+   266→      },
+   267→    });
+   268→    employeeIds.push(emp.id);
+   269→
+   270→    // site history
+   271→    if (e.site) {
+   272→      await db.employeeSiteHistory.create({
+   273→        data: {
+   274→          employeeId: emp.id,
+   275→          siteId: sites[e.site],
+   276→          startDate: joinDate > utc(year, new Date().getUTCMonth() - 12, 1)
+   277→            ? joinDate
+   278→            : utc(year, new Date().getUTCMonth() - 6, 1),
+   279→          reason: "Initial assignment",
+   280→          createdByName: "Faisal Al-Saud",
+   281→        },
+   282→      });
+   283→    }
+   284→    // idle employees may have past history
+   285→    if (!e.site && rand() > 0.5) {
+   286→      await db.employeeSiteHistory.create({
+   287→        data: {
+   288→          employeeId: emp.id,
+   289→          siteId: sites["Al Noor Tower"],
+   290→          startDate: utc(year - 1, 2, 1),
+   291→          endDate: utc(year - 1, 8, 15),
+   292→          reason: "Project completed – returned to pool",
+   293→          createdByName: "Faisal Al-Saud",
+   294→        },
+   295→      });
+   296→    }
+   297→  }
+   298→
+   299→  // index → employee map for later references
+   300→  const byIdx = (i: number) => employeeIds[i];
+   301→
+   302→  // ---- team leaders (one per active site) -----------------------------------
+   303→  await db.site.update({ where: { name: "Al Noor Tower" }, data: { teamLeaderId: byIdx(0) } });
+   304→  await db.site.update({ where: { name: "Jeddah Waterfront Mall" }, data: { teamLeaderId: byIdx(6) } });
+   305→  await db.site.update({ where: { name: "Dammam Industrial Complex" }, data: { teamLeaderId: byIdx(11) } });
+   306→  await db.site.update({ where: { name: "NEOM Camp 7" }, data: { teamLeaderId: byIdx(15) } });
+   307→  await db.site.update({ where: { name: "KAFD Phase 2" }, data: { teamLeaderId: byIdx(19) } });
+   308→
+   309→  // ---- attendance (current month, day 1 → today) ----------------------------
+   310→  const now = new Date();
+   311→  const daysThisMonth = now.getUTCDate();
+   312→  const monthStart = utc(now.getUTCFullYear(), now.getUTCMonth(), 1);
+   313→  const presentPool = ["present", "present", "present", "present", "present", "present", "present", "present", "overtime", "present", "present", "absent"];
+   314→
+   315→  for (let i = 0; i < employeesSeed.length; i++) {
+   316→    const e = employeesSeed[i];
+   317→    for (let day = 1; day <= daysThisMonth; day++) {
+   318→      const date = utc(now.getUTCFullYear(), now.getUTCMonth(), day);
+   319→      // Friday = holiday
+   320→      if (date.getUTCDay() === 5) {
+   321→        await db.attendance.create({
+   322→          data: {
+   323→            employeeId: byIdx(i),
+   324→            siteId: e.site ? sites[e.site] : null,
+   325→            attendanceDate: date,
+   326→            status: "holiday",
+   327→            createdByName: "Sara Al-Harbi",
+   328→          },
+   329→        });
+   330→        continue;
+   331→      }
+   332→      let status: string;
+   333→      if (!e.site) {
+   334→        status = "no_site";
+   335→      } else {
+   336→        status = pick(presentPool);
+   337→      }
+   338→      await db.attendance.create({
+   339→        data: {
+   340→          employeeId: byIdx(i),
+   341→          siteId: e.site ? sites[e.site] : null,
+   342→          attendanceDate: date,
+   343→          status,
+   344→          overtimeHours: status === "overtime" ? pick([1.5, 2, 2.5, 3, 4]) : null,
+   345→          createdByName: "Sara Al-Harbi",
+   346→        },
+   347→      });
+   348→    }
+   349→  }
+   350→
+   351→  // ---- leave requests ---------------------------------------------------------
+   352→  const mkLeave = async (
+   353→    empIdx: number,
+   354→    type: string,
+   355→    otherType: string | null,
+   356→    startOffset: number,
+   357→    days: number,
+   358→    status: string,
+   359→    reason: string
+   360→  ) => {
+   361→    const start = new Date(now.getTime() + startOffset * 86400000);
+   362→    const end = new Date(start.getTime() + (days - 1) * 86400000);
+   363→    await db.leaveRequest.create({
+   364→      data: {
+   365→        employeeId: byIdx(empIdx),
+   366→        leaveType: type,
+   367→        otherType,
+   368→        startDate: utc(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate()),
+   369→        endDate: utc(end.getUTCFullYear(), end.getUTCMonth(), end.getUTCDate()),
+   370→        totalDays: days,
+   371→        reason,
+   372→        status,
+   373→        createdByName: status === "pending" ? "Sara Al-Harbi" : "Mohammed Al-Otaibi",
+   374→        reviewedByName: status === "approved" || status === "rejected" ? "Faisal Al-Saud" : null,
+   375→        reviewedAt: status === "approved" || status === "rejected" ? new Date() : null,
+   376→      },
+   377→    });
+   378→  };
+   379→
+   380→  await mkLeave(2, "sick", null, -12, 3, "approved", "Fever and medical rest advised by doctor");
+   381→  await mkLeave(9, "casual", null, 3, 2, "pending", "Family matters – travelling to home country");
+   382→  await mkLeave(5, "annual", null, 7, 10, "pending", "Annual vacation as per contract");
+   383→  await mkLeave(13, "emergency", null, -5, 1, "approved", "Emergency at accommodation");
+   384→  await mkLeave(17, "marriage", null, 14, 5, "pending", "Marriage ceremony in home country");
+   385→  await mkLeave(21, "sick", null, -20, 4, "rejected", "Medical leave – no certificate provided");
+   386→  await mkLeave(4, "casual", null, -2, 1, "approved", "Personal errand");
+   387→
+   388→  // approved leave for idx 2 → attendance rows become leave for those past dates
+   389→  {
+   390→    const start = new Date(now.getTime() - 12 * 86400000);
+   391→    for (let d = 0; d < 3; d++) {
+   392→      const date = utc(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate() + d);
+   393→      await db.attendance.upsert({
+   394→        where: {
+   395→          employeeId_attendanceDate: { employeeId: byIdx(2), attendanceDate: date },
+   396→        },
+   397→        update: { status: "leave" },
+   398→        create: {
+   399→          employeeId: byIdx(2),
+   400→          siteId: sites["Al Noor Tower"],
+   401→          attendanceDate: date,
+   402→          status: "leave",
+   403→        },
+   404→      });
+   405→    }
+   406→  }
+   407→
+   408→  // ---- warnings & fines ----------------------------------------------------------
+   409→  await db.warning.create({
+   410→    data: {
+   411→      employeeId: byIdx(5),
+   412→      reason: "Repeated late arrivals to site (3 consecutive days)",
+   413→      isAutoGenerated: true,
+   414→      absentDates: JSON.stringify([ymd(new Date(now.getTime() - 6 * 86400000)), ymd(new Date(now.getTime() - 5 * 86400000)), ymd(new Date(now.getTime() - 4 * 86400000))]),
+   415→      ratingPenalty: 0.5,
+   416→      createdByName: "System",
+   417→    },
+   418→  });
+   419→  await db.warning.create({
+   420→    data: {
+   421→      employeeId: byIdx(13),
+   422→      reason: "Not following site safety instructions",
+   423→      isAutoGenerated: false,
+   424→      absentDates: null,
+   425→      ratingPenalty: 0.5,
+   426→      createdByName: "Faisal Al-Saud",
+   427→    },
+   428→  });
+   429→  await db.warning.create({
+   430→    data: {
+   431→      employeeId: byIdx(9),
+   432→      reason: "Absence without prior notice",
+   433→      isAutoGenerated: false,
+   434→      absentDates: JSON.stringify([ymd(new Date(now.getTime() - 9 * 86400000))]),
+   435→      ratingPenalty: 0.5,
+   436→      createdByName: "Sara Al-Harbi",
+   437→    },
+   438→  });
+   439→
+   440→  await db.fine.create({
+   441→    data: {
+   442→      employeeId: byIdx(13),
+   443→      reason: "Damage to company equipment (angle grinder)",
+   444→      amount: 250,
+   445→      currency: "SAR",
+   446→      ratingPenalty: 1,
+   447→      createdByName: "Faisal Al-Saud",
+   448→    },
+   449→  });
+   450→  await db.fine.create({
+   451→    data: {
+   452→      employeeId: byIdx(5),
+   453→      reason: "Unauthorized absence from duty post",
+   454→      amount: 150,
+   455→      currency: "SAR",
+   456→      ratingPenalty: 1,
+   457→      createdByName: "Sara Al-Harbi",
+   458→    },
+   459→  });
+   460→  await db.fine.create({
+   461→    data: {
+   462→      employeeId: byIdx(17),
+   463→      reason: "Loss of safety helmet issued by company",
+   464→      amount: 80,
+   465→      currency: "SAR",
+   466→      ratingPenalty: 1,
+   467→      createdByName: "Mohammed Al-Otaibi",
+   468→    },
+   469→  });
+   470→
+   471→  // ---- cancellation requests --------------------------------------------------------
+   472→  await db.cancellationRequest.create({
+   473→    data: {
+   474→      employeeId: byIdx(21),
+   475→      reason: "Employee requesting final exit – returning home permanently",
+   476→      status: "pending",
+   477→      requestedByName: "Sara Al-Harbi",
+   478→    },
+   479→  });
+   480→  await db.cancellationRequest.create({
+   481→    data: {
+   482→      employeeId: byIdx(22),
+   483→      reason: "Contract not renewed by client request",
+   484→      status: "pending",
+   485→      requestedByName: "Mohammed Al-Otaibi",
+   486→    },
+   487→  });
+   488→  await db.cancellationRequest.create({
+   489→    data: {
+   490→      employeeId: byIdx(23),
+   491→      reason: "Visa expired – employee departed",
+   492→      status: "rejected",
+   493→      requestedByName: "Sara Al-Harbi",
+   494→      reviewedByName: "Faisal Al-Saud",
+   495→      reviewedAt: new Date(now.getTime() - 3 * 86400000),
+   496→    },
+   497→  });
+   498→
+   499→  // ---- uniform issues -----------------------------------------------------------------
+   500→  let uniformCounter = 1;
+   501→  const mkUniform = async (
+   502→    empIdx: number,
+   503→    docType: string,
+   504→    docNumber: string,
+   505→    issuedMonthsAgo: number,
+   506→    items: [string, number][],
+   507→    isRenewal = false,
+   508→    previousIssueId: string | null = null
+   509→  ) => {
+   510→    const issuedAt = addMonths(now, -issuedMonthsAgo);
+   511→    const renewalDate = addMonths(issuedAt, 6);
+   512→    const idx = String(uniformCounter).padStart(4, "0");
+   513→    uniformCounter += 1;
+   514→    const issue = await db.uniformIssue.create({
+   515→      data: {
+   516→        uniformCode: `UN-${idx}`,
+   517→        tokenNumber: `TKN-${idx}`,
+   518→        employeeId: byIdx(empIdx),
+   519→        documentType: docType,
+   520→        documentNumber: encryptField(docNumber),
+   521→        siteId: employeesSeed[empIdx].site ? sites[employeesSeed[empIdx].site!] : null,
+   522→        teamLeaderName: null,
+   523→        isRenewal,
+   524→        previousIssueId,
+   525→        issuedAt,
+   526→        renewalDate,
+   527→        createdByName: "Sara Al-Harbi",
+   528→      },
+   529→    });
+   530→    for (const [itemName, qty] of items) {
+   531→      await db.uniformIssueItem.create({
+   532→        data: { issueId: issue.id, itemId: uniformItems[itemName], quantity: qty },
+   533→      });
+   534→    }
+   535→    return issue;
+   536→  };
+   537→
+   538→  await mkUniform(0, "Iqama", "2456789012", 7, [["Uniform", 2], ["Safety Shoes", 1], ["Helmet", 1], ["Gloves", 2]]); // overdue
+   539→  await mkUniform(1, "Iqama", "2456789013", 5, [["Uniform", 2], ["Shoes", 1], ["Vest", 1]]);
+   540→  await mkUniform(2, "Passport", "N9988776", 6, [["Uniform", 2], ["Safety Jacket", 1], ["Helmet", 1]]);
+   541→  await mkUniform(4, "Iqama", "2456789015", 4, [["Uniform", 2], ["Safety Shoes", 1], ["Bottle", 1]]);
+   542→  await mkUniform(6, "Iqama", "2456789016", 6, [["Uniform", 2], ["Helmet", 1], ["Gloves", 2], ["Vest", 1]]);
+   543→  await mkUniform(7, "Passport", "F1122334", 3, [["Uniform", 2], ["Safety Shoes", 1]]);
+   544→  await mkUniform(9, "Iqama", "2456789018", 5, [["Uniform", 2], ["Helmet", 1]]);
+   545→  await mkUniform(11, "Iqama", "2456789019", 6, [["Uniform", 2], ["Safety Jacket", 1], ["Safety Shoes", 1]]);
+   546→  await mkUniform(15, "Iqama", "2456789020", 2, [["Uniform", 2], ["Gloves", 2], ["Helmet", 1]]);
+   547→  const renewed = await mkUniform(17, "Iqama", "2456789021", 8, [["Uniform", 2], ["Safety Shoes", 1], ["Helmet", 1]]);
+   548→  await mkUniform(17, "Iqama", "2456789022", 2, [["Uniform", 2], ["Safety Shoes", 1], ["Helmet", 1], ["Vest", 1]], true, renewed.id);
+   549→
+   550→  // ---- notifications --------------------------------------------------------------------
+   551→  const mkNotif = async (
+   552→    recipientId: string,
+   553→    type: string,
+   554→    title: string,
+   555→    message: string,
+   556→    read: boolean,
+   557→    hoursAgo: number,
+   558→    referenceType?: string,
+   559→    referenceId?: string
+   560→  ) => {
+   561→    await db.notification.create({
+   562→      data: {
+   563→        recipientId,
+   564→        type,
+   565→        title,
+   566→        message,
+   567→        referenceType: referenceType ?? null,
+   568→        referenceId: referenceId ?? null,
+   569→        read,
+   570→        createdAt: new Date(now.getTime() - hoursAgo * 3600000),
+   571→      },
+   572→    });
+   573→  };
+   574→
+   575→  const pendingLeaves = await db.leaveRequest.findMany({ where: { status: "pending" } });
+   576→  const pendingCancels = await db.cancellationRequest.findMany({ where: { status: "pending" } });
+   577→
+   578→  await mkNotif(superAdmin.id, "leave_request", "New leave request", "Sara Al-Harbi submitted a leave request for Md. Rafiq Islam (2 days).", false, 2, "leave_request", pendingLeaves[0]?.id);
+   579→  await mkNotif(superAdmin.id, "leave_request", "New leave request", "Annual leave request for Suresh Nair (10 days) awaiting review.", false, 6, "leave_request", pendingLeaves[1]?.id);
+   580→  await mkNotif(superAdmin.id, "cancellation_request", "Cancellation request submitted", "Anwar Hossain is requested for deletion by HR. Super Admin review required.", false, 4, "cancellation_request", pendingCancels[0]?.id);
+   581→  await mkNotif(superAdmin.id, "warning", "Warning issued", "A warning was issued to Joseph Mwangi (auto-generated: 3 consecutive absences).", true, 26);
+   582→  await mkNotif(superAdmin.id, "fine", "Fine issued", "A fine of SAR 250 was issued to Tek Bahadur.", true, 50);
+   583→  await mkNotif(superAdmin.id, "uniform_renewal", "Uniform renewal overdue", "Rahul Sharma's uniform (TKN-0001) is due for renewal.", false, 12);
+   584→  await mkNotif(superAdmin.id, "system", "Welcome to ASM Manpower System", "The platform has been set up successfully. Review pending requests from the dashboard.", true, 72);
+   585→  await mkNotif(hrAdmin.id, "system", "Profile activated", "Your administrator account is active. You can manage employees, attendance and leave requests.", true, 72);
+   586→  await mkNotif(opsAdmin.id, "system", "Profile activated", "Your administrator account is active. You can manage sites and attendance.", true, 72);
+   587→
+   588→  // ---- audit logs ------------------------------------------------------------------------
+   589→  const mkAudit = async (
+   590→    actorName: string,
+   591→    action: string,
+   592→    entity: string,
+   593→    entityId: string | null,
+   594→    before: unknown,
+   595→    after: unknown,
+   596→    hoursAgo: number
+   597→  ) => {
+   598→    await db.auditLog.create({
+   599→      data: {
+   600→        actorId: null,
+   601→        actorName,
+   602→        action,
+   603→        entity,
+   604→        entityId,
+   605→        before: before ? JSON.stringify(before) : null,
+   606→        after: after ? JSON.stringify(after) : null,
+   607→        createdAt: new Date(now.getTime() - hoursAgo * 3600000),
+   608→      },
+   609→    });
+   610→  };
+   611→
+   612→  await mkAudit("Faisal Al-Saud", "site.create", "site", sites["Al Noor Tower"], null, { name: "Al Noor Tower" }, 240);
+   613→  await mkAudit("Faisal Al-Saud", "admin.create", "admin_user", hrAdmin.id, null, { email: "hr.admin@asm.com", role: "admin" }, 236);
+   614→  await mkAudit("Sara Al-Harbi", "employee.create", "employee", byIdx(0), null, { employeeCode: "ASM-" + year + "-001", fullName: "Rahul Sharma" }, 200);
+   615→  await mkAudit("Faisal Al-Saud", "employee.assign_site", "employee", byIdx(0), { site: null }, { site: "Al Noor Tower" }, 198);
+   616→  await mkAudit("Sara Al-Harbi", "attendance.bulk_mark", "attendance", null, null, { site: "Al Noor Tower", status: "present" }, 30);
+   617→  await mkAudit("Faisal Al-Saud", "leave.approve", "leave_request", pendingLeaves[1]?.id ?? null, { status: "pending" }, { status: "approved" }, 26);
+   618→  await mkAudit("System", "warning.auto_create", "warning", byIdx(5), null, { reason: "3 consecutive unexplained absences" }, 26);
+   619→  await mkAudit("Sara Al-Harbi", "fine.create", "fine", byIdx(5), null, { amount: 150, currency: "SAR" }, 25);
+   620→  await mkAudit("Mohammed Al-Otaibi", "cancellation.request", "cancellation_request", pendingCancels[1]?.id ?? null, null, { employee: "Pemba Sherpa" }, 4);
+   621→  await mkAudit("Faisal Al-Saud", "site.deactivate", "site", sites["Makkah Hotel Renovation"], { isActive: true }, { isActive: false, reassignedEmployees: 0 }, 48);
+   622→
+   623→  console.log("Seed complete.");
+   624→  console.log("  Super Admin : superadmin@asm.com / SuperAdmin@123");
+   625→  console.log("  HR Admin    : hr.admin@asm.com / Admin@123");
+   626→  console.log("  Ops Admin   : ops.admin@asm.com / Admin@123");
+   627→}
+   628→
+   629→main()
+   630→  .catch((e) => {
+   631→    console.error(e);
+   632→    process.exit(1);
+   633→  })
+   634→  .finally(() => db.$disconnect());
+   635→

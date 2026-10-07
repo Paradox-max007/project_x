@@ -1,0 +1,3028 @@
+# MANPOWER MANAGEMENT SYSTEM
+
+## 0 → 100 Product Requirements & Development Specification
+
+**Reference:** ASM_PROJECT
+**Target architecture:** Next.js + TypeScript + Supabase + Vercel
+**Primary users:** Super Admin, Admin/HR/Operations staff
+**Future users:** Site Supervisor, Client, Employee/Worker
+**Platform:** Responsive Web Application
+**Deployment:** Vercel
+**Database/Auth/Storage/Realtime:** Supabase
+
+---
+
+# 1. PRODUCT VISION
+
+Build a professional manpower-company management platform for managing:
+
+* Employees/workers
+* Employee documents
+* Employee assignments
+* Client sites/projects
+* Team leaders
+* Daily attendance
+* Overtime
+* Employee ratings
+* Warnings
+* Fines
+* Leave requests
+* Employee cancellation/deletion requests
+* Uniform/PPE distribution
+* Notifications
+* Administrators
+* Role/menu permissions
+* Dashboard analytics
+* Employee CV/report generation
+* WhatsApp sharing
+* Audit history
+* Secure document storage
+
+The new system should reproduce the important business capabilities of the reference application while being:
+
+1. More secure
+2. More scalable
+3. Easier to maintain
+4. Better structured for Supabase
+5. Easier for an AI coding agent to develop
+6. Fully responsive
+7. Ready for future mobile applications
+8. Ready for multiple manpower-company branches
+9. Suitable for production deployment
+
+---
+
+# 2. CORE DESIGN PRINCIPLE
+
+Do NOT build the new application as one giant page containing business logic.
+
+Use:
+
+```text
+UI
+ ↓
+Feature Components
+ ↓
+Application Services
+ ↓
+Supabase
+ ↓
+PostgreSQL / Storage / Auth / Realtime
+```
+
+Business-critical operations should be performed through:
+
+* PostgreSQL functions
+* Supabase RPC
+* Server-side actions/API routes
+* Database constraints
+* RLS policies
+
+The browser must never be trusted for authorization.
+
+---
+
+# 3. TECHNOLOGY STACK
+
+## Frontend
+
+* Next.js
+* React
+* TypeScript
+* Tailwind CSS
+* shadcn/ui
+* Radix UI
+* Lucide icons
+* React Hook Form
+* Zod
+* TanStack Query
+* Recharts
+* date-fns
+* Framer Motion
+
+## Backend
+
+Use Next.js server-side functionality where appropriate:
+
+```text
+Next.js Server Components
+Next.js Server Actions
+Route Handlers
+Supabase RPC
+PostgreSQL Functions
+```
+
+Do not create a separate Express server.
+
+## Backend platform
+
+Supabase:
+
+* PostgreSQL
+* Supabase Auth
+* Supabase Storage
+* Supabase Realtime
+* Edge Functions where necessary
+* Database Functions
+* RLS
+
+## Deployment
+
+Vercel:
+
+```text
+GitHub
+   ↓
+Vercel
+   ↓
+Next.js
+   ↓
+Supabase
+```
+
+---
+
+# 4. APPLICATION STRUCTURE
+
+Recommended project:
+
+```text
+manpower-management/
+│
+├── src/
+│   ├── app/
+│   │   ├── login/
+│   │   ├── dashboard/
+│   │   ├── employees/
+│   │   ├── sites/
+│   │   ├── attendance/
+│   │   ├── leave-requests/
+│   │   ├── cancellation-requests/
+│   │   ├── warnings/
+│   │   ├── fines/
+│   │   ├── uniform-registry/
+│   │   ├── notifications/
+│   │   ├── administrators/
+│   │   ├── settings/
+│   │   └── api/
+│   │
+│   ├── components/
+│   ├── features/
+│   │   ├── employees/
+│   │   ├── sites/
+│   │   ├── attendance/
+│   │   ├── leave/
+│   │   ├── uniforms/
+│   │   ├── warnings/
+│   │   ├── fines/
+│   │   └── dashboard/
+│   │
+│   ├── lib/
+│   │   ├── supabase/
+│   │   ├── permissions/
+│   │   ├── validation/
+│   │   ├── pdf/
+│   │   └── utils/
+│   │
+│   ├── hooks/
+│   ├── stores/
+│   └── types/
+│
+├── supabase/
+│   ├── migrations/
+│   ├── functions/
+│   └── seed.sql
+│
+└── public/
+```
+
+---
+
+# 5. USER ROLES
+
+## 5.1 Super Admin
+
+Full access.
+
+Can:
+
+* Manage administrators
+* Create admins
+* Edit admins
+* Disable admins
+* Manage permissions
+* Manage employees
+* Manage sites
+* Manage attendance
+* Manage leave
+* Approve/reject cancellation requests
+* Issue warnings
+* Issue fines
+* Manage uniform registry
+* View dashboard
+* View notifications
+* Change application settings
+* View audit logs
+
+---
+
+## 5.2 Admin
+
+Access controlled through permissions.
+
+Example:
+
+```text
+Dashboard                 ALWAYS
+Uniform Registry          ALWAYS
+
+Employees                 configurable
+Sites                     configurable
+Attendance                configurable
+Leave Requests            configurable
+Cancellation Requests     configurable
+Warnings                  configurable
+Fines                     configurable
+Notifications             configurable
+```
+
+---
+
+## 5.3 Future roles
+
+Architecture must support:
+
+```text
+super_admin
+admin
+hr
+operations
+site_supervisor
+client
+employee
+```
+
+Do not implement all of these initially unless required.
+
+---
+
+# 6. AUTHENTICATION
+
+Use Supabase Auth.
+
+## Login
+
+Support:
+
+* Email
+* Password
+* Password reset
+* Session persistence
+* Logout
+* Protected routes
+
+Optional future:
+
+* OTP
+* Google
+* Microsoft
+
+---
+
+# 7. PROFILE / USER TABLE
+
+Do NOT store passwords manually.
+
+Supabase Auth owns credentials.
+
+Application profile:
+
+```text
+profiles
+---------
+id UUID
+email
+full_name
+role
+avatar_url
+theme
+is_active
+created_at
+updated_at
+```
+
+`profiles.id` references:
+
+```text
+auth.users.id
+```
+
+---
+
+# 8. EMPLOYEE MANAGEMENT
+
+## Employee list
+
+Features:
+
+* Search
+* Pagination
+* Site filter
+* Working/Idle filter
+* Status filter
+* Sort
+* Employee ID search
+* Nationality search
+* Position search
+* Company search
+
+Columns:
+
+```text
+Photo
+Employee ID
+Name
+Nationality
+Position
+Company
+Site
+Team Leader
+Rating
+Status
+Actions
+```
+
+---
+
+# 9. EMPLOYEE ID
+
+Automatically generate:
+
+```text
+ASM-2026-001
+ASM-2026-002
+ASM-2026-003
+```
+
+Never allow the frontend to generate IDs.
+
+Use a PostgreSQL sequence/function to avoid race conditions.
+
+Required:
+
+```text
+employee_id UNIQUE
+```
+
+Deleted employees must not cause IDs to be reused.
+
+---
+
+# 10. EMPLOYEE PROFILE
+
+Fields:
+
+```text
+Full Name
+Employee ID
+Nationality
+Date of Birth
+Phone
+Email
+Address
+Emergency Contact
+Position
+Join Date
+Company
+Passport Number
+Passport Status
+ID Number
+ID Status
+Current Site
+Rating
+Status
+Photo
+Team Leader
+Team Leader Site
+```
+
+Additional future fields:
+
+```text
+Gender
+Marital Status
+Religion
+Visa Number
+Visa Expiry
+Work Permit
+Medical Status
+Contract Start
+Contract End
+Bank Details
+Salary
+```
+
+These should be separate modules/fields rather than hardcoding everything into the first version.
+
+---
+
+# 11. EMPLOYEE DOCUMENT SECURITY
+
+Sensitive fields:
+
+```text
+passport_number
+id_number
+visa_number
+work_permit_number
+```
+
+must not be exposed indiscriminately.
+
+Preferred design:
+
+```text
+Database
+    ↓
+Encrypted value / protected document
+    ↓
+Authorized server operation
+    ↓
+Authorized user
+```
+
+Storage files must use private Supabase Storage buckets.
+
+Use signed URLs for document access.
+
+---
+
+# 12. EMPLOYEE STATUS
+
+Use enum:
+
+```text
+active
+pending_deletion
+deleted
+```
+
+For operational status:
+
+```text
+working
+idle
+```
+
+Do not store `Idle` as an actual site.
+
+An idle worker means:
+
+```text
+current_assignment = NULL
+```
+
+---
+
+# 13. TEAM LEADER
+
+A worker may become team leader for a site.
+
+Rules:
+
+* One active team leader per site
+* A team leader must be assigned to that site
+* Deactivating a site removes team-leader assignment
+* Moving the team leader to another site removes previous leadership
+* UI must warn before replacing an existing leader
+
+Database constraint/function should enforce this.
+
+---
+
+# 14. SITE MANAGEMENT
+
+Site fields:
+
+```text
+Site Name
+Client Name
+Project Name
+Active/Inactive
+Created At
+```
+
+Future:
+
+```text
+Client ID
+Location
+GPS coordinates
+Supervisor
+Required workforce
+Contract
+Shift
+```
+
+---
+
+# 15. SITE ASSIGNMENT
+
+Employee can be:
+
+```text
+Idle
+↓
+Assigned to Site A
+↓
+Transferred to Site B
+```
+
+Every transfer should eventually be recorded in:
+
+```text
+employee_site_history
+```
+
+Fields:
+
+```text
+employee_id
+site_id
+start_date
+end_date
+reason
+created_by
+```
+
+This is an important improvement over the reference system.
+
+---
+
+# 16. SITE DEACTIVATION
+
+When site becomes inactive:
+
+1. Show confirmation
+2. Show number of assigned employees
+3. Warn administrator
+4. Remove active assignment
+5. Remove team leader status
+6. Keep historical attendance
+7. Keep historical site assignment
+8. Keep reports
+
+Never destroy historical attendance.
+
+---
+
+# 17. ATTENDANCE MANAGEMENT
+
+Attendance must be one of the most optimized modules.
+
+Views:
+
+```text
+List
+Calendar
+```
+
+---
+
+# 18. ATTENDANCE STATUS
+
+Recommended enum:
+
+```text
+present
+absent
+no_site
+overtime
+not_marked
+leave
+holiday
+```
+
+The reference project currently uses Present/Absent/No Site/Overtime/Not Marked concepts.
+
+The new system should add `leave` and `holiday` so reports remain accurate.
+
+---
+
+# 19. ATTENDANCE LIST
+
+Features:
+
+* Month selector
+* Year selector
+* Previous month
+* Next month
+* Employee search
+* Site filter
+* Pagination
+* Daily status editing
+* Overtime entry
+
+Example:
+
+```text
+Employee     01 02 03 04 05 06 07 ...
+John         P  P  A  P  P  OT L  ...
+David        P  P  P  P  NS P  P  ...
+```
+
+---
+
+# 20. ATTENDANCE CALENDAR
+
+Calendar view:
+
+```text
+Employee
+     ↓
+January 2026
+     ↓
+01 02 03 04 05...
+```
+
+Selecting an employee shows their monthly attendance.
+
+---
+
+# 21. OVERTIME
+
+When status is:
+
+```text
+overtime
+```
+
+allow:
+
+```text
+overtime_hours
+```
+
+Example:
+
+```text
+OT = 2.5 hours
+```
+
+Future payroll module can consume this value.
+
+---
+
+# 22. ATTENDANCE RULES
+
+Important:
+
+* No duplicate employee/date records
+* Future dates should not automatically become attendance records unless configured
+* Historical attendance cannot disappear when an employee is deleted
+* Inactive sites must not appear as current assignment options
+* Deleted employees must not appear in normal attendance lists
+* Attendance changes must be auditable
+
+Database:
+
+```text
+UNIQUE(employee_id, attendance_date)
+```
+
+---
+
+# 23. LEAVE MANAGEMENT
+
+Leave types:
+
+```text
+casual
+sick
+annual
+emergency
+marriage
+other
+```
+
+Fields:
+
+```text
+Employee
+Leave Type
+Other Type
+Start Date
+End Date
+Total Days
+Reason
+Status
+Created By
+Reviewed By
+Reviewed At
+```
+
+Statuses:
+
+```text
+pending
+approved
+rejected
+cancelled
+```
+
+---
+
+# 24. LEAVE WORKFLOW
+
+```text
+Create Request
+      ↓
+Pending
+      ↓
+Admin/Super Admin Review
+      ↓
+Approve / Reject
+```
+
+When approved:
+
+* Attendance dates can automatically become `leave`
+* Notification is created
+* Audit entry is created
+
+---
+
+# 25. CANCELLATION / EMPLOYEE DELETION REQUESTS
+
+Employee deletion must not be an immediate destructive action.
+
+Workflow:
+
+```text
+Employee
+   ↓
+Cancellation Request
+   ↓
+pending_deletion
+   ↓
+Super Admin Review
+   ↓
+Approve
+   ↓
+deleted
+```
+
+Or:
+
+```text
+Reject
+ ↓
+active
+```
+
+---
+
+# 26. DELETION POLICY
+
+Never physically destroy important employee history.
+
+When deleted:
+
+```text
+Employee = deleted
+```
+
+Historical:
+
+* Attendance
+* Warnings
+* Fines
+* Leave
+* Uniform
+* Site history
+
+remain available to authorized administrators.
+
+This is preferable to the reference project's mixed soft-hide/delete approach.
+
+---
+
+# 27. WARNINGS
+
+Create warning:
+
+```text
+Employee
+Reason
+Auto-generated?
+Absent Dates
+Created By
+Created At
+```
+
+Rating effect:
+
+```text
+Warning = -0.5 rating
+```
+
+Rating cannot go below:
+
+```text
+0
+```
+
+Use database transaction:
+
+```text
+create warning
++
+update rating
++
+create notification
++
+create audit record
+```
+
+All must succeed together.
+
+---
+
+# 28. AUTOMATIC WARNING SYSTEM
+
+Support configurable rules.
+
+Example:
+
+```text
+3 consecutive unexplained absences
+        ↓
+Generate warning
+```
+
+Do not hardcode this permanently.
+
+Create settings:
+
+```text
+warning_absence_threshold
+warning_rating_penalty
+fine_rating_penalty
+```
+
+---
+
+# 29. FINES
+
+Fields:
+
+```text
+Employee
+Reason
+Amount
+Created By
+Created At
+```
+
+Reference behavior:
+
+```text
+Fine = -1 rating
+```
+
+Amount must be >= 0.
+
+Currency should be configurable.
+
+Do not hardcode SAR.
+
+---
+
+# 30. FINANCIAL SAFETY
+
+Every fine must record:
+
+```text
+currency
+amount
+reason
+issued_by
+issued_at
+```
+
+Never modify an existing fine silently.
+
+Future enhancement:
+
+```text
+issued
+waived
+partially_paid
+paid
+```
+
+---
+
+# 31. UNIFORM / PPE REGISTRY
+
+This is a major module.
+
+Each record:
+
+```text
+Uniform ID
+Token Number
+Employee
+Employee ID
+Document Type
+Document Number
+Items
+Site
+Team Leader
+Renewal
+Previous Token
+Created Date
+Renewal Date
+```
+
+---
+
+# 32. UNIFORM ITEMS
+
+Make the system configurable rather than hardcoded.
+
+Example:
+
+```text
+Uniform
+Shoes
+Helmet
+Bottle
+Safety Jacket
+Gloves
+Safety Shoes
+Vest
+Other
+```
+
+Database:
+
+```text
+uniform_items
+```
+
+rather than permanently storing a JSON string.
+
+---
+
+# 33. UNIFORM ISSUANCE
+
+Workflow:
+
+```text
+Select employee
+      ↓
+Select document type
+      ↓
+Enter document number
+      ↓
+Select issued items
+      ↓
+Assign token
+      ↓
+Save
+```
+
+---
+
+# 34. UNIFORM RENEWAL
+
+Default:
+
+```text
+Renewal = Created Date + 6 months
+```
+
+But make duration configurable:
+
+```text
+uniform_renewal_months = 6
+```
+
+Renewal:
+
+```text
+Old Token
+    ↓
+New Token
+    ↓
+previous_token_id
+```
+
+Historical records remain intact.
+
+---
+
+# 35. UNIFORM SEARCH
+
+Search by:
+
+* Employee name
+* Employee ID
+* Token number
+* Uniform ID
+* Site
+* Document number
+* Renewal status
+
+---
+
+# 36. DASHBOARD
+
+Dashboard should provide an operational overview.
+
+Cards:
+
+```text
+Total Employees
+Working
+Idle
+Active Sites
+Inactive Sites
+Today's Present
+Today's Absent
+Pending Leave
+Pending Cancellation
+Upcoming Uniform Renewals
+```
+
+---
+
+# 37. SITE BREAKDOWN
+
+Example:
+
+```text
+Site                  Employees
+--------------------------------
+Site A                     52
+Site B                     31
+Site C                     17
+Idle                       12
+```
+
+Clicking a site should navigate to filtered employees.
+
+---
+
+# 38. ATTENDANCE ANALYTICS
+
+Charts:
+
+```text
+Present
+Absent
+No Site
+Leave
+Overtime
+```
+
+Time range:
+
+```text
+Day
+Week
+Month
+```
+
+Future:
+
+```text
+Site comparison
+Employee attendance %
+Overtime trends
+```
+
+---
+
+# 39. EMPLOYEE RATING
+
+Initial employee rating:
+
+```text
+5.0
+```
+
+Actions:
+
+```text
+Warning → -0.5
+Fine → -1.0
+```
+
+Minimum:
+
+```text
+0
+```
+
+Future:
+
+```text
+Performance review
+Attendance score
+Supervisor rating
+Client rating
+```
+
+---
+
+# 40. EMPLOYEE PROFILE ACTIONS
+
+Profile should include:
+
+```text
+View
+Edit
+Attendance
+Warnings
+Fines
+Leave
+Uniform History
+Site History
+Documents
+Download CV
+Download Report
+Share
+```
+
+---
+
+# 41. PDF GENERATION
+
+Provide two documents.
+
+## Employee CV
+
+Professional format:
+
+```text
+Photo
+Name
+Employee ID
+Nationality
+Position
+Company
+Experience/Join Date
+Contact
+Current Assignment
+```
+
+## Employee Report
+
+Include:
+
+```text
+Personal Information
+Employment Information
+Current Site
+Attendance Summary
+Warnings
+Fines
+Uniform Records
+Rating
+```
+
+Generate PDFs server-side where possible.
+
+---
+
+# 42. WHATSAPP SHARING
+
+Allow:
+
+```text
+Generate PDF
+↓
+Download
+↓
+Open WhatsApp
+```
+
+Do not automatically send private employee information without user confirmation.
+
+Future:
+
+```text
+Share directly with selected contact
+```
+
+---
+
+# 43. NOTIFICATION SYSTEM
+
+Notification types:
+
+```text
+leave_request
+cancellation_request
+warning
+fine
+uniform_renewal
+system
+```
+
+Each notification:
+
+```text
+id
+recipient_id
+title
+message
+type
+reference_type
+reference_id
+read
+created_at
+```
+
+---
+
+# 44. NOTIFICATION BEHAVIOR
+
+When:
+
+```text
+Leave submitted
+```
+
+→ notify reviewer.
+
+When:
+
+```text
+Cancellation submitted
+```
+
+→ notify Super Admin.
+
+When:
+
+```text
+Warning created
+```
+
+→ notify appropriate administrator.
+
+When:
+
+```text
+Fine created
+```
+
+→ notify appropriate administrator.
+
+When:
+
+```text
+Uniform renewal approaching
+```
+
+→ notification.
+
+---
+
+# 45. REALTIME
+
+Use Supabase Realtime for:
+
+* Notifications
+* Approval status
+* Attendance updates where needed
+* Admin changes
+* Future site supervisor updates
+
+Do not subscribe every user to every table.
+
+Use targeted channels.
+
+---
+
+# 46. ADMIN MANAGEMENT
+
+Super Admin page:
+
+```text
+Admin Name
+Email
+Role
+Status
+Access
+Created
+Actions
+```
+
+Actions:
+
+```text
+Create
+Edit
+Disable
+Reset access
+Permissions
+```
+
+---
+
+# 47. MENU PERMISSIONS
+
+Permission table:
+
+```text
+user_id
+menu_key
+allowed
+```
+
+Example:
+
+```text
+employees = true
+sites = false
+attendance = true
+leave_requests = true
+```
+
+But authorization must also be enforced server-side.
+
+Hiding the sidebar is NOT security.
+
+---
+
+# 48. PERMISSION ARCHITECTURE
+
+Use:
+
+```text
+role_permissions
+```
+
+and optionally:
+
+```text
+user_permissions
+```
+
+Final permission:
+
+```text
+Super Admin
+      ↓
+Full access
+
+Admin
+      ↓
+Role permissions
+      +
+User-specific permissions
+```
+
+---
+
+# 49. SETTINGS
+
+System settings:
+
+```text
+Company Name
+Company Logo
+Company Address
+Company Phone
+Currency
+Timezone
+Employee ID Prefix
+Warning Penalty
+Fine Penalty
+Uniform Renewal Period
+Attendance Rules
+Theme
+```
+
+Store configurable settings in:
+
+```text
+system_settings
+```
+
+---
+
+# 50. THEME
+
+Support:
+
+```text
+Dark
+Light
+```
+
+Theme is stored per user.
+
+Do not hardcode colors across pages.
+
+Use CSS variables.
+
+---
+
+# 51. AUDIT LOG
+
+This is a major improvement recommended for the new system.
+
+Track:
+
+```text
+Who
+What
+When
+Entity
+Entity ID
+Before
+After
+IP/device if appropriate
+```
+
+Examples:
+
+```text
+Admin A created employee
+Admin B changed site
+Admin C approved leave
+Super Admin deleted employee
+Admin D issued fine
+```
+
+---
+
+# 52. DATABASE DESIGN
+
+Recommended Supabase schema:
+
+```text
+profiles
+roles
+permissions
+user_permissions
+
+employees
+employee_documents
+employee_site_history
+
+sites
+site_team_leaders
+
+attendance
+attendance_adjustments
+
+leave_requests
+warnings
+fines
+
+uniform_items
+uniform_issues
+uniform_issue_items
+
+notifications
+audit_logs
+
+system_settings
+```
+
+---
+
+# 53. EMPLOYEES TABLE
+
+```sql
+employees
+---------
+id uuid PK
+employee_code text UNIQUE
+full_name text
+nationality text
+date_of_birth date
+phone text
+email text
+address text
+emergency_contact text
+position text
+join_date date
+company_name text
+passport_number_encrypted text
+passport_status text
+id_number_encrypted text
+id_status text
+photo_path text
+rating numeric
+status text
+created_at timestamptz
+updated_at timestamptz
+```
+
+---
+
+# 54. SITES TABLE
+
+```sql
+sites
+-----
+id uuid PK
+name text UNIQUE
+client_name text
+project_name text
+is_active boolean
+created_at timestamptz
+updated_at timestamptz
+```
+
+---
+
+# 55. EMPLOYEE SITE HISTORY
+
+```sql
+employee_site_history
+---------------------
+id uuid PK
+employee_id uuid FK
+site_id uuid FK
+start_date date
+end_date date
+reason text
+created_by uuid FK
+created_at timestamptz
+```
+
+Current assignment is derived from the active record.
+
+---
+
+# 56. ATTENDANCE TABLE
+
+```sql
+attendance
+----------
+id uuid PK
+employee_id uuid FK
+site_id uuid FK
+attendance_date date
+status text
+overtime_hours numeric
+notes text
+created_by uuid
+updated_by uuid
+created_at timestamptz
+updated_at timestamptz
+
+UNIQUE(employee_id, attendance_date)
+```
+
+---
+
+# 57. LEAVE REQUESTS TABLE
+
+```sql
+leave_requests
+--------------
+id uuid PK
+employee_id uuid FK
+leave_type text
+other_type text
+start_date date
+end_date date
+total_days integer
+reason text
+status text
+created_by uuid
+reviewed_by uuid
+reviewed_at timestamptz
+created_at timestamptz
+updated_at timestamptz
+```
+
+---
+
+# 58. WARNINGS TABLE
+
+```sql
+warnings
+--------
+id uuid PK
+employee_id uuid FK
+reason text
+is_auto_generated boolean
+absent_dates jsonb
+rating_penalty numeric
+created_by uuid
+created_at timestamptz
+```
+
+---
+
+# 59. FINES TABLE
+
+```sql
+fines
+-----
+id uuid PK
+employee_id uuid FK
+reason text
+amount numeric
+currency text
+rating_penalty numeric
+created_by uuid
+created_at timestamptz
+```
+
+---
+
+# 60. UNIFORM TABLES
+
+Instead of the reference project's JSON item storage:
+
+```text
+uniform_issues
+--------------
+id
+employee_id
+token_number
+document_type
+document_number_encrypted
+site_id
+team_leader_id
+is_renewal
+previous_issue_id
+issued_at
+renewal_date
+created_by
+```
+
+```text
+uniform_items
+-------------
+id
+name
+description
+is_active
+```
+
+```text
+uniform_issue_items
+-------------------
+issue_id
+item_id
+quantity
+```
+
+---
+
+# 61. RLS SECURITY
+
+Every business table should have RLS enabled.
+
+Example principle:
+
+```text
+Authenticated user
++
+Active account
++
+Valid role
++
+Required permission
+=
+Access
+```
+
+Do not use:
+
+```text
+if (user.role === ...)
+```
+
+only in React.
+
+The database must enforce access.
+
+---
+
+# 62. STORAGE
+
+Create private buckets:
+
+```text
+employee-photos
+employee-documents
+uniform-documents
+company-assets
+generated-reports
+```
+
+Public assets:
+
+```text
+company logo
+generic UI assets
+```
+
+Private employee documents should NEVER be public buckets.
+
+---
+
+# 63. FILE NAMING
+
+Example:
+
+```text
+employee-documents/
+  employee-id/
+    passport/
+      document-id.pdf
+```
+
+Do not use original filenames directly.
+
+---
+
+# 64. API / SERVER OPERATIONS
+
+Recommended operations:
+
+```text
+create_employee
+update_employee
+assign_employee_site
+transfer_employee_site
+
+mark_attendance
+bulk_mark_attendance
+
+create_leave_request
+approve_leave_request
+reject_leave_request
+
+create_warning
+create_fine
+
+create_uniform_issue
+renew_uniform
+
+create_cancellation_request
+approve_cancellation
+reject_cancellation
+```
+
+Critical operations should be PostgreSQL functions/RPC where transactions are required.
+
+---
+
+# 65. BULK ATTENDANCE
+
+Must support:
+
+```text
+Mark entire site Present
+Mark entire site Absent
+Mark selected employees
+Copy previous day
+Copy previous month pattern
+```
+
+But every bulk operation must remain auditable.
+
+---
+
+# 66. SEARCH PERFORMANCE
+
+Employee table may eventually contain:
+
+```text
+10,000+
+50,000+
+100,000+
+```
+
+Therefore:
+
+* Server-side pagination
+* Database indexes
+* Debounced search
+* No loading all employees into browser
+* No frontend filtering of huge datasets
+
+Indexes:
+
+```text
+employee_code
+full_name
+phone
+current_site
+status
+attendance_date
+employee_id
+site_id
+```
+
+---
+
+# 67. DASHBOARD PERFORMANCE
+
+Do not calculate all dashboard metrics in React.
+
+Use:
+
+```text
+database views
+RPC functions
+materialized views where appropriate
+```
+
+Example:
+
+```text
+get_dashboard_statistics()
+```
+
+returns:
+
+```json
+{
+  "totalEmployees": 1250,
+  "working": 1100,
+  "idle": 150,
+  "activeSites": 27,
+  "presentToday": 1043,
+  "absentToday": 41,
+  "pendingLeave": 12,
+  "pendingCancellation": 3
+}
+```
+
+---
+
+# 68. RESPONSIVE DESIGN
+
+Desktop:
+
+```text
+Sidebar
+Header
+Large tables
+Dashboard cards
+```
+
+Tablet:
+
+```text
+Collapsible sidebar
+Responsive tables
+```
+
+Mobile:
+
+```text
+Drawer navigation
+Cards instead of wide tables
+Bottom actions where appropriate
+Scrollable data tables
+```
+
+Never design only for desktop.
+
+---
+
+# 69. UX RULES
+
+Every destructive action requires confirmation.
+
+Examples:
+
+```text
+Delete site?
+Deactivate site?
+Approve deletion?
+Issue fine?
+Issue warning?
+```
+
+Use:
+
+```text
+Loading state
+Skeleton
+Empty state
+Error state
+Success toast
+Validation error
+Confirmation dialog
+```
+
+---
+
+# 70. EMPLOYEE ADD FLOW
+
+Use a multi-section form.
+
+## Section 1
+
+Personal:
+
+```text
+Name
+DOB
+Nationality
+Photo
+```
+
+## Section 2
+
+Contact:
+
+```text
+Phone
+Email
+Address
+Emergency Contact
+```
+
+## Section 3
+
+Employment:
+
+```text
+Position
+Company
+Join Date
+Site
+Team Leader
+```
+
+## Section 4
+
+Documents:
+
+```text
+Passport
+ID
+Status
+```
+
+---
+
+# 71. FORM VALIDATION
+
+Use Zod.
+
+Example:
+
+```text
+Full name → required
+Phone → valid format
+Email → valid email
+Date → valid date
+Rating → 0–5
+Fine → >= 0
+Leave end >= start
+```
+
+Validation must happen both:
+
+```text
+Frontend
+Backend/database
+```
+
+---
+
+# 72. IMPORT EMPLOYEES
+
+Recommended Phase 2.
+
+Allow:
+
+```text
+Excel
+CSV
+```
+
+Flow:
+
+```text
+Upload
+ ↓
+Preview
+ ↓
+Validate
+ ↓
+Show errors
+ ↓
+Confirm
+ ↓
+Bulk insert
+```
+
+Never import directly without preview.
+
+---
+
+# 73. EXPORT
+
+Allow:
+
+```text
+Employees CSV
+Attendance CSV
+Attendance PDF
+Leave report
+Fine report
+Warning report
+Uniform report
+Site workforce report
+```
+
+---
+
+# 74. REPORT FILTERS
+
+Every report should support:
+
+```text
+Date range
+Site
+Employee
+Status
+```
+
+Where appropriate.
+
+---
+
+# 75. REPORT AUDIT
+
+Generated report should record:
+
+```text
+Generated by
+Generated at
+Filter parameters
+```
+
+---
+
+# 76. SECURITY REQUIREMENTS
+
+Mandatory:
+
+* Supabase Auth
+* RLS
+* Private storage
+* Signed URLs
+* Server-side authorization
+* Input validation
+* Rate limiting on sensitive endpoints
+* Audit logging
+* No passwords in application tables
+* No secrets in Git
+* No service-role key in browser
+* Environment variables in Vercel
+* HTTPS only
+
+---
+
+# 77. ENVIRONMENT VARIABLES
+
+Local:
+
+```env
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
+SUPABASE_SERVICE_ROLE_KEY=
+```
+
+The service-role key must ONLY be used server-side.
+
+Never:
+
+```text
+NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY
+```
+
+---
+
+# 78. SUPABASE ENVIRONMENTS
+
+Recommended:
+
+```text
+Development
+     ↓
+Staging
+     ↓
+Production
+```
+
+At minimum:
+
+```text
+Supabase development project
+Supabase production project
+```
+
+---
+
+# 79. VERCEL ENVIRONMENTS
+
+Use:
+
+```text
+Preview
+Production
+```
+
+Git branches:
+
+```text
+main       → production
+develop    → development
+feature/*  → preview
+```
+
+---
+
+# 80. DEVELOPMENT PHASE 0 — DISCOVERY
+
+Before writing production code:
+
+1. Create new GitHub repository
+2. Audit reference application
+3. Freeze feature list
+4. Define user roles
+5. Define database schema
+6. Define permission matrix
+7. Define design system
+8. Define deployment environments
+
+Deliverable:
+
+```text
+Architecture specification
+```
+
+---
+
+# 81. PHASE 1 — PROJECT FOUNDATION
+
+Build:
+
+* Next.js project
+* TypeScript
+* Tailwind
+* shadcn/ui
+* Supabase client
+* Supabase SSR
+* Environment handling
+* ESLint
+* Type checking
+* Git structure
+* Basic layout
+
+Acceptance:
+
+```text
+npm run build
+npm run lint
+```
+
+must pass.
+
+---
+
+# 82. PHASE 2 — SUPABASE FOUNDATION
+
+Create:
+
+* Supabase project
+* Auth
+* Profiles
+* Roles
+* Permissions
+* RLS
+* Storage
+* Base migrations
+
+Create:
+
+```text
+001_profiles.sql
+002_roles.sql
+003_permissions.sql
+004_storage.sql
+```
+
+---
+
+# 83. PHASE 3 — AUTHENTICATION
+
+Implement:
+
+```text
+/login
+/forgot-password
+/reset-password
+```
+
+Add:
+
+* Session middleware
+* Protected routes
+* Logout
+* User profile
+
+Acceptance:
+
+Unauthenticated users cannot access dashboard.
+
+---
+
+# 84. PHASE 4 — APPLICATION SHELL
+
+Build:
+
+```text
+Sidebar
+Header
+User menu
+Notification badge
+Theme
+Breadcrumb
+Responsive layout
+```
+
+Sidebar dynamically uses permissions.
+
+---
+
+# 85. PHASE 5 — ADMIN MANAGEMENT
+
+Build:
+
+```text
+Administrators
+Create admin
+Edit admin
+Disable admin
+Permissions
+```
+
+Test:
+
+```text
+Super Admin sees everything
+Admin only sees granted menus
+```
+
+---
+
+# 86. PHASE 6 — SITES
+
+Build:
+
+```text
+Site list
+Create site
+Edit site
+Deactivate site
+Delete site
+Employee count
+Client
+Project
+```
+
+Implement site assignment logic.
+
+---
+
+# 87. PHASE 7 — EMPLOYEES
+
+Build:
+
+```text
+Employee list
+Add employee
+Edit employee
+View employee
+Search
+Pagination
+Filters
+Photo
+Documents
+Site assignment
+Team leader
+Rating
+```
+
+Then:
+
+```text
+CV PDF
+Report PDF
+WhatsApp sharing
+```
+
+---
+
+# 88. PHASE 8 — ATTENDANCE
+
+Build:
+
+```text
+Monthly selector
+Employee search
+Site filter
+List view
+Calendar view
+Status editing
+Overtime
+Pagination
+```
+
+Then:
+
+```text
+Bulk attendance
+```
+
+---
+
+# 89. PHASE 9 — LEAVE
+
+Build:
+
+```text
+Request
+Pending
+Approve
+Reject
+History
+Filters
+Notifications
+```
+
+Integrate approved leave with attendance.
+
+---
+
+# 90. PHASE 10 — WARNINGS & FINES
+
+Build:
+
+```text
+Warnings
+Fines
+Employee history
+Rating updates
+Notifications
+Audit logs
+```
+
+All rating changes happen transactionally.
+
+---
+
+# 91. PHASE 11 — CANCELLATION
+
+Build:
+
+```text
+Cancellation request
+Pending deletion
+Review
+Approve
+Reject
+Employee status
+Historical preservation
+```
+
+---
+
+# 92. PHASE 12 — UNIFORM REGISTRY
+
+Build:
+
+```text
+Uniform list
+Employee grouping
+Record count
+Add entry
+Edit
+Delete/archive
+Renew
+Token number
+Document
+Items
+Renewal date
+History
+```
+
+---
+
+# 93. PHASE 13 — NOTIFICATIONS
+
+Build:
+
+```text
+Notification dropdown
+Notification page
+Unread count
+Mark read
+Mark all read
+Deep links
+Realtime updates
+```
+
+---
+
+# 94. PHASE 14 — DASHBOARD
+
+Build:
+
+```text
+Statistics
+Charts
+Site breakdown
+Attendance breakdown
+Pending requests
+Idle employees
+Upcoming renewals
+```
+
+Every dashboard card should link to its source module.
+
+---
+
+# 95. PHASE 15 — REPORTING
+
+Implement:
+
+```text
+Employee PDF
+Employee report
+Attendance report
+Site report
+Warning report
+Fine report
+Leave report
+Uniform report
+```
+
+---
+
+# 96. PHASE 16 — AUDIT & SECURITY
+
+Complete:
+
+* RLS audit
+* Permission audit
+* Storage audit
+* Input validation
+* Rate limits
+* Audit logs
+* Error handling
+* Sensitive-data review
+* Environment variable review
+
+Perform penetration-style testing of every API/RPC.
+
+---
+
+# 97. PHASE 17 — PERFORMANCE
+
+Target:
+
+```text
+Fast initial load
+< 2 sec typical dashboard interaction
+No massive client-side datasets
+Server-side pagination
+Indexed database queries
+Lazy-loaded heavy modules
+Optimized images
+Virtualized large tables where necessary
+```
+
+Test with:
+
+```text
+1,000 employees
+10,000 employees
+50,000 employees
+```
+
+---
+
+# 98. PHASE 18 — TESTING
+
+## Unit tests
+
+Test:
+
+```text
+ID generation
+rating calculations
+leave-day calculations
+permission checks
+attendance rules
+renewal calculation
+```
+
+## Integration tests
+
+Test:
+
+```text
+Employee creation
+Site assignment
+Attendance
+Leave approval
+Warning
+Fine
+Uniform issuance
+Deletion approval
+```
+
+## E2E
+
+Test:
+
+```text
+Login
+Dashboard
+Create employee
+Assign employee
+Mark attendance
+Submit leave
+Approve leave
+Issue warning
+Issue fine
+Create uniform
+Create cancellation
+Approve deletion
+```
+
+---
+
+# 99. PHASE 19 — DEPLOYMENT
+
+## Supabase
+
+Configure:
+
+```text
+Production database
+Auth
+Storage
+RLS
+Functions
+Realtime
+```
+
+## Vercel
+
+Connect GitHub.
+
+Configure:
+
+```text
+Production environment variables
+Preview environment variables
+Domain
+HTTPS
+Build command
+```
+
+Build:
+
+```text
+npm run build
+```
+
+Deploy.
+
+---
+
+# 100. PRODUCTION ACCEPTANCE
+
+The project is considered 100% complete only when:
+
+### Authentication
+
+* Login works
+* Logout works
+* Password reset works
+* Protected routes work
+
+### Permissions
+
+* Super Admin has full access
+* Admin permissions work
+* Unauthorized API requests are blocked
+
+### Employees
+
+* CRUD works
+* IDs are generated safely
+* Documents are protected
+* Site assignment works
+* Team leaders work
+* Rating works
+
+### Sites
+
+* CRUD works
+* Assignment works
+* Deactivation works
+* Historical data remains intact
+
+### Attendance
+
+* Monthly view works
+* Calendar works
+* Search works
+* Site filtering works
+* Overtime works
+* Bulk operations work
+* Duplicate attendance is impossible
+
+### Leave
+
+* Create works
+* Approve/reject works
+* Attendance integration works
+* Notifications work
+
+### Warnings
+
+* Create works
+* Rating deduction works
+* Notifications work
+* Audit works
+
+### Fines
+
+* Create works
+* Amount validation works
+* Rating deduction works
+* Notifications work
+
+### Cancellation
+
+* Request works
+* Pending status works
+* Approval works
+* Rejection works
+* Historical records remain
+
+### Uniform
+
+* Issue works
+* Token generation works
+* Renewal works
+* History works
+* Search works
+
+### Notifications
+
+* Creation works
+* Realtime works
+* Read/unread works
+
+### Dashboard
+
+* Metrics accurate
+* Charts accurate
+* Filters work
+* Navigation works
+
+### Reports
+
+* Employee PDF works
+* Report PDF works
+* Export works
+* WhatsApp sharing works
+
+### Security
+
+* RLS tested
+* Storage protected
+* Secrets protected
+* Audit logs working
+
+### Deployment
+
+* Vercel production works
+* Supabase production works
+* Custom domain works
+* HTTPS works
+* Error monitoring configured
+
+---
+
+# 101. RECOMMENDED DEVELOPMENT ORDER
+
+Do NOT build pages randomly.
+
+Use this exact order:
+
+```text
+01. Repository
+02. Architecture
+03. Supabase project
+04. Database migrations
+05. Auth
+06. Profiles
+07. Roles
+08. Permissions
+09. App shell
+10. Settings
+11. Sites
+12. Employees
+13. Site assignment
+14. Attendance
+15. Leave
+16. Warnings
+17. Fines
+18. Cancellation
+19. Uniform
+20. Notifications
+21. Dashboard
+22. PDF
+23. WhatsApp
+24. Audit
+25. Reports
+26. Performance
+27. Security audit
+28. Testing
+29. Staging
+30. Production
+```
+
+---
+
+# 102. AI DEVELOPMENT RULE
+
+Because this project will likely be developed with AI assistance, every implementation task must be small and testable.
+
+Bad:
+
+```text
+Build the entire employee system.
+```
+
+Good:
+
+```text
+Implement employee database migration.
+
+Acceptance:
+- employees table exists
+- employee_code unique
+- RLS enabled
+- insert policy exists
+- select policy exists
+- migration succeeds
+```
+
+Then:
+
+```text
+Implement employee list API.
+```
+
+Then:
+
+```text
+Implement employee table.
+```
+
+Then:
+
+```text
+Implement employee creation form.
+```
+
+Then:
+
+```text
+Implement employee details.
+```
+
+---
+
+# 103. AI TASK FORMAT
+
+Every development task should contain:
+
+```text
+TASK
+OBJECTIVE
+FILES TO CREATE
+FILES TO MODIFY
+DATABASE CHANGES
+BUSINESS RULES
+SECURITY RULES
+UI REQUIREMENTS
+API/RPC REQUIREMENTS
+ACCEPTANCE TESTS
+REGRESSION TESTS
+```
+
+AI must never make unrelated changes.
+
+---
+
+# 104. GIT STRATEGY
+
+Branches:
+
+```text
+main
+develop
+
+feature/auth
+feature/employees
+feature/sites
+feature/attendance
+feature/leave
+feature/uniform
+feature/reports
+```
+
+Each feature should be merged only after:
+
+```text
+lint
+typecheck
+build
+tests
+manual verification
+```
+
+---
+
+# 105. DEFINITION OF DONE
+
+A feature is NOT done because the UI appears.
+
+It is done only when:
+
+```text
+UI
++
+Validation
++
+Database
++
+RLS
++
+Business logic
++
+Error handling
++
+Loading state
++
+Empty state
++
+Mobile responsive
++
+Tests
++
+Audit
+```
+
+are complete.
+
+---
+
+# 106. FUTURE PHASE — MANPOWER ERP
+
+After the reference features are stable, the architecture should allow:
+
+```text
+Recruitment
+Candidate Database
+Job Orders
+Client Management
+Contracts
+Payroll
+Salary
+Overtime Payroll
+Invoices
+Worker Documents
+Visa Management
+Accommodation
+Transportation
+Employee Mobile App
+Site Supervisor App
+Client Portal
+Biometric Attendance
+GPS Attendance
+QR Attendance
+WhatsApp Automation
+AI Workforce Analytics
+```
+
+These are intentionally Phase 2/3 features and should NOT make the first version unnecessarily complicated.
+
+---
+
+# 107. FINAL ARCHITECTURE
+
+The target production architecture should be:
+
+```text
+                         ┌─────────────────┐
+                         │     USERS       │
+                         └────────┬────────┘
+                                  │
+                                  ▼
+                         ┌─────────────────┐
+                         │     VERCEL      │
+                         │     Next.js     │
+                         └────────┬────────┘
+                                  │
+               ┌──────────────────┼──────────────────┐
+               │                  │                  │
+               ▼                  ▼                  ▼
+          Supabase Auth       PostgreSQL          Storage
+               │                  │                  │
+               │                  │                  │
+               │             RLS + RPC              │
+               │                  │                  │
+               └──────────────────┼──────────────────┘
+                                  │
+                                  ▼
+                         ┌─────────────────┐
+                         │   Realtime      │
+                         │ Notifications   │
+                         └─────────────────┘
+```
+
+---
+
+# 108. TARGET RESULT
+
+The finished system should feel like a professional manpower ERP rather than simply a clone of the reference application.
+
+The first production version should reproduce the reference application's core workflows:
+
+```text
+ADMIN
+  ↓
+DASHBOARD
+  ↓
+EMPLOYEES
+  ├── Profile
+  ├── Documents
+  ├── Site
+  ├── Rating
+  ├── Attendance
+  ├── Warnings
+  ├── Fines
+  ├── Leave
+  └── Uniform
+
+SITES
+  ├── Client
+  ├── Project
+  ├── Employees
+  └── Team Leader
+
+ATTENDANCE
+  ├── List
+  ├── Calendar
+  ├── Overtime
+  └── Reports
+
+REQUESTS
+  ├── Leave
+  └── Cancellation
+
+UNIFORM
+  ├── Issue
+  ├── Renewal
+  └── History
+
+ADMINISTRATION
+  ├── Admins
+  ├── Permissions
+  ├── Notifications
+  └── Settings
+```
+
+The major architectural difference is that the new version should be **Supabase-native, RLS-secured, transaction-safe, auditable and scalable**, instead of reproducing the reference project's Prisma/API structure one-for-one.
