@@ -41,9 +41,9 @@ export async function GET(req: NextRequest) {
     else if (siteId) employeeWhere.currentSiteId = siteId;
     if (query) {
       employeeWhere.OR = [
-        { fullName: { contains: query } },
-        { employeeCode: { contains: query } },
-        { position: { contains: query } },
+        { fullName: { contains: query, mode: "insensitive" } },
+        { employeeCode: { contains: query, mode: "insensitive" } },
+        { position: { contains: query, mode: "insensitive" } },
       ];
     }
 

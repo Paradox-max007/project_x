@@ -517,7 +517,7 @@ async function main() {
         tokenNumber: `TKN-${idx}`,
         employeeId: byIdx(empIdx),
         documentType: docType,
-        documentNumber: encryptField(docNumber),
+        documentNumber: encryptField(docNumber) ?? "",
         siteId: employeesSeed[empIdx].site ? sites[employeesSeed[empIdx].site!] : null,
         teamLeaderName: null,
         isRenewal,

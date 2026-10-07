@@ -1,15 +1,20 @@
-// ASM Manpower Management System — Prisma schema (SQLite)
-// Adapted from the Supabase/PostgreSQL spec to this environment's stack.
+// ASM Manpower Management System — Prisma schema (PostgreSQL / Supabase).
+// Deployed via Vercel; DATABASE_URL points at the Supabase transaction
+// pooler (PgBouncer) and DIRECT_URL at the direct connection (used by
+// `prisma db push` / migrations).
 // Sensitive fields (passport_number, id_number, uniform document numbers)
 // are stored AES-256-GCM encrypted via src/lib/crypto.ts.
 
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  // "native" = local dev; "rhel-openssl-3.0.x" = Vercel serverless runtime
+  binaryTargets = ["native", "rhel-openssl-3.0.x"]
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 // ---------------------------------------------------------------------------

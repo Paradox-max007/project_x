@@ -54,3 +54,15 @@ server.log
 /skills/
 # agent tool artifacts
 tool-results/
+
+# local SQLite database (project now uses Supabase PostgreSQL)
+/db/*.db
+
+# sandbox / local-only infrastructure (not needed for Vercel deploys)
+/Caddyfile
+/.zscripts
+/examples/
+/mini-services/
+/tests/
+/download/
+/screenshots/

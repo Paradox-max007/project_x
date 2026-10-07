@@ -43,9 +43,9 @@ export async function GET(req: NextRequest) {
   if (entity) where.entity = entity;
   if (query) {
     where.OR = [
-      { actorName: { contains: query } },
-      { action: { contains: query } },
-      { entity: { contains: query } },
+      { actorName: { contains: query, mode: "insensitive" } },
+      { action: { contains: query, mode: "insensitive" } },
+      { entity: { contains: query, mode: "insensitive" } },
     ];
   }
 

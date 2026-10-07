@@ -39,9 +39,9 @@ export async function GET(req: NextRequest) {
     if (status) where.status = status;
     if (query) {
       where.OR = [
-        { employee: { fullName: { contains: query } } },
-        { employee: { employeeCode: { contains: query } } },
-        { reason: { contains: query } },
+        { employee: { fullName: { contains: query, mode: "insensitive" } } },
+        { employee: { employeeCode: { contains: query, mode: "insensitive" } } },
+        { reason: { contains: query, mode: "insensitive" } },
       ];
     }
 

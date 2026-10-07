@@ -76,14 +76,14 @@ export async function GET(req: NextRequest) {
   if (siteIdParam === "idle") where.currentSiteId = null;
   else if (siteIdParam) where.currentSiteId = siteIdParam;
   if (query) {
-    // SQLite LIKE is case-insensitive for ASCII
+    // Postgres: mode "insensitive" keeps search case-insensitive (as SQLite was)
     where.OR = [
-      { fullName: { contains: query } },
-      { employeeCode: { contains: query } },
-      { phone: { contains: query } },
-      { nationality: { contains: query } },
-      { position: { contains: query } },
-      { companyName: { contains: query } },
+      { fullName: { contains: query, mode: "insensitive" } },
+      { employeeCode: { contains: query, mode: "insensitive" } },
+      { phone: { contains: query, mode: "insensitive" } },
+      { nationality: { contains: query, mode: "insensitive" } },
+      { position: { contains: query, mode: "insensitive" } },
+      { companyName: { contains: query, mode: "insensitive" } },
     ];
   }
 
