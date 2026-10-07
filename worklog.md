@@ -357,3 +357,28 @@ Stage Summary:
 - Full ASM Manpower Management System pushed to github.com/Paradox-max007/project_x.git (main branch, 4 commits)
 - PAT used one-time inline only — not stored in .git/config, .env, or any committed file
 - Future pushes need credentials again (PAT was not persisted for security)
+
+---
+Task ID: 8
+Agent: main-coordinator (Z.ai Code)
+Task: Migrate backend to Supabase (PostgreSQL) with placeholder credentials for Vercel deployment; push to GitHub
+
+Work Log:
+- Converted prisma/schema.prisma: provider sqlite -> postgresql, added directUrl (env DIRECT_URL), binaryTargets ["native", "rhel-openssl-3.0.x"] for Vercel serverless
+- Added mode: "insensitive" to all 24 string search filters across 7 API routes (employees, attendance, leave-requests, warnings, fines, cancellation-requests, audit-logs) — SQLite LIKE is case-insensitive by default, Postgres is not
+- package.json: build -> plain "next build" (Vercel-safe), added postinstall "prisma generate", db:seed -> "tsx prisma/seed.ts" (tsx added to devDeps), removed --accept-data-loss from db:push
+- next.config.ts: output standalone disabled when VERCEL=1; src/lib/db.ts: query logging dev-only
+- prisma/seed.ts: fixed pre-existing strict-null type error (encryptField ?? "")
+- .env: Supabase placeholders (DATABASE_URL pooler 6543 + pgbouncer=true, DIRECT_URL 5432, ASM_SECRET_KEY) — committed WITH placeholders per user request
+- README.md: complete Supabase setup + Vercel deploy guide (env var table, seeded accounts, security notes)
+- Untracked sandbox-only artifacts from git: Caddyfile, .zscripts/, examples/, mini-services/, tests/, download/, db/custom.db (files remain on disk locally)
+- Static verification: prisma validate + generate OK, tsc --noEmit clean (app code), eslint clean
+- Dynamic verification against REAL PostgreSQL 18 (embedded-postgres, user-space, no root): prisma db push OK, full seed OK, login OK, dashboard 25 employees + charts OK, case-insensitive search OK (query "dinesh" matched "Dinesh Chhetri" via API)
+- Sandbox gotchas solved: session exports rogue DATABASE_URL=file:... (must unset when spawning dev server / pass explicit env to db commands); background processes are reaped between commands EXCEPT double-forked daemons (bash -c 'setsid nohup CMD &'); 4GB RAM — OOM killer killed dev server when chromium+next+postgres ran together (restart lean, close browser after tests)
+- Final sandbox state: local PostgreSQL 18 daemon on 127.0.0.1:5433 (double-forked, data at /home/z/pgverify-data) + dev server reading .env -> local pg; .env has git skip-worktree so the local URL is never committed
+- Pushed commit 8042c0b to github.com/Paradox-max007/project_x.git main
+
+Stage Summary:
+- Repo is now Supabase + Vercel ready: clone -> fill .env placeholders -> bun install -> bun run db:push -> bun run db:seed -> bun run dev; on Vercel set DATABASE_URL + DIRECT_URL + ASM_SECRET_KEY
+- IMPORTANT for user: set ASM_SECRET_KEY BEFORE first db:seed (encrypted fields), use Transaction pooler URI for DATABASE_URL and Session/direct URI for DIRECT_URL
+- .env committed with placeholders per request; local sandbox .env points at local Postgres and is skip-worktree protected
