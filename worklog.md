@@ -318,3 +318,21 @@ Stage Summary:
 - PRODUCTION-READY: all 15 modules verified end-to-end in the browser; server-side authorization enforced; sensitive fields encrypted at rest; every mutation audited; leave→attendance and cancellation→deletion workflows transactional
 - Login credentials: superadmin@asm.com / SuperAdmin@123 (full access) · hr.admin@asm.com / Admin@123 (restricted) · ops.admin@asm.com / Admin@123 (ops)
 - All spec §100 acceptance criteria that apply to this environment validated: auth, permissions (UI + API), employees CRUD/IDs/documents/assignment/team-leaders/rating, sites CRUD/deactivation/history, attendance (monthly/calendar/search/site-filter/overtime/bulk/duplicate-impossible), leave (approve→attendance integration), warnings (rating deduction, auto-check), fines (validation, rating), cancellation (approve/reject, history preserved), uniforms (issue/token/renewal/history/search), notifications (create/read/unread/deep-links), dashboard (metrics/charts/navigation), reports (PDF CV + Report, WhatsApp share), security (server-side enforcement, encryption, audit)
+
+---
+Task ID: 6
+Agent: main-coordinator (Z.ai Code)
+Task: Make the side panel scrollbar slim, sleek and modern with theme-centric color
+
+Work Log:
+- Identified theme accent: emerald-400 (#34d399) — used by sidebar brand gradient, active nav item tint and inset indicator
+- Added `.scrollbar-slim` styles to src/app/globals.css: 4px pill-shaped (border-radius 9999px) thumb in emerald at 35% opacity, brightens to 70% on hover / 95% while dragging, fully transparent track and corner (floating thumb look), plus Firefox support via scrollbar-width:thin + scrollbar-color
+- First attempt used Tailwind v4 `@utility scrollbar-slim` with nested &::-webkit-scrollbar selectors — it silently generated ZERO CSS (verified via document.styleSheets scan: 0 matching rules despite class present in DOM); replaced with plain CSS classes which are always emitted verbatim
+- Applied `scrollbar-slim` class to the SidebarNav <nav> in src/components/manpower/app-shell.tsx — this component is shared by the desktop rail and the mobile drawer, so both get the new scrollbar
+- Verification: eslint clean, no console/runtime errors; Playwright headless Chromium hides scrollbars in screenshots, so ran headed Chromium under Xvfb (Xvfb + node script must run in the SAME bash command — backgrounded Xvfb gets killed between commands)
+- Pixel-verified in headed screenshot: emerald thumb RGB(35,98,77) ≈ emerald-400@35% blended over zinc-900, spans ~4-6px at nav right edge, 320px tall thumb (correct 499/738 content ratio); VLM confirmed: slim, pill-shaped ends, invisible track, "modern and sleek (VS Code/Discord-like)"
+
+Stage Summary:
+- Side panel (desktop sidebar + mobile drawer) now scrolls with a slim, sleek, emerald-themed scrollbar matching the app's brand accent
+- `.scrollbar-slim` is a reusable utility — add the class to any overflow container to get the same scrollbar
+- Key learning for future agents: Tailwind v4.1.18 `@utility` with nested pseudo-element selectors did NOT emit CSS in this project — use plain CSS classes in globals.css for ::-webkit-scrollbar styling

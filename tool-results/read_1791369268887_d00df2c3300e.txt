@@ -1,0 +1,830 @@
+     1→"use client";
+     2→
+     3→import { Suspense, lazy, useCallback, useEffect, useState } from "react";
+     4→import { AnimatePresence, motion } from "framer-motion";
+     5→import { useTheme } from "next-themes";
+     6→import { formatDistanceToNow, parseISO } from "date-fns";
+     7→import {
+     8→  AlertTriangle,
+     9→  Bell,
+    10→  BellOff,
+    11→  CalendarCheck,
+    12→  CalendarOff,
+    13→  CheckCheck,
+    14→  ChevronDown,
+    15→  HardHat,
+    16→  LayoutDashboard,
+    17→  Loader2,
+    18→  Lock,
+    19→  LogOut,
+    20→  MapPin,
+    21→  Menu,
+    22→  Moon,
+    23→  PanelLeftClose,
+    24→  PanelLeftOpen,
+    25→  Receipt,
+    26→  ScrollText,
+    27→  Settings,
+    28→  ShieldCheck,
+    29→  Shirt,
+    30→  Sun,
+    31→  SunMoon,
+    32→  UserX,
+    33→  Users,
+    34→  type LucideIcon,
+    35→} from "lucide-react";
+    36→import { toast } from "sonner";
+    37→import { Toaster } from "@/components/ui/sonner";
+    38→import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+    39→import { Button } from "@/components/ui/button";
+    40→import {
+    41→  DropdownMenu,
+    42→  DropdownMenuContent,
+    43→  DropdownMenuItem,
+    44→  DropdownMenuLabel,
+    45→  DropdownMenuRadioGroup,
+    46→  DropdownMenuRadioItem,
+    47→  DropdownMenuSeparator,
+    48→  DropdownMenuSub,
+    49→  DropdownMenuSubContent,
+    50→  DropdownMenuSubTrigger,
+    51→  DropdownMenuTrigger,
+    52→} from "@/components/ui/dropdown-menu";
+    53→import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+    54→import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
+    55→import { Skeleton } from "@/components/ui/skeleton";
+    56→import { EmptyState } from "@/components/manpower/shared/page-kit";
+    57→import { notifMeta, notifTargetView } from "@/components/manpower/notif-meta";
+    58→import { apiGet, apiPost } from "@/lib/api-client";
+    59→import { cn } from "@/lib/utils";
+    60→import { useAppStore } from "@/stores/app-store";
+    61→import type { AppView, AuthUser, NotificationRecord } from "@/types/manpower";
+    62→
+    63→// ---------------------------------------------------------------------------
+    64→// View registry — named exports from the view stub files (stable contract).
+    65→// Other agents own the contents; names will not change.
+    66→// ---------------------------------------------------------------------------
+    67→
+    68→const Views: Record<AppView, React.LazyExoticComponent<React.ComponentType>> = {
+    69→  dashboard: lazy(() =>
+    70→    import("./views/dashboard-view").then((m) => ({ default: m.DashboardView }))
+    71→  ),
+    72→  employees: lazy(() =>
+    73→    import("./views/employees-view").then((m) => ({ default: m.EmployeesView }))
+    74→  ),
+    75→  sites: lazy(() =>
+    76→    import("./views/sites-view").then((m) => ({ default: m.SitesView }))
+    77→  ),
+    78→  attendance: lazy(() =>
+    79→    import("./views/attendance-view").then((m) => ({ default: m.AttendanceView }))
+    80→  ),
+    81→  leave_requests: lazy(() =>
+    82→    import("./views/leave-view").then((m) => ({ default: m.LeaveView }))
+    83→  ),
+    84→  cancellation_requests: lazy(() =>
+    85→    import("./views/cancellations-view").then((m) => ({ default: m.CancellationsView }))
+    86→  ),
+    87→  warnings: lazy(() =>
+    88→    import("./views/warnings-view").then((m) => ({ default: m.WarningsView }))
+    89→  ),
+    90→  fines: lazy(() =>
+    91→    import("./views/fines-view").then((m) => ({ default: m.FinesView }))
+    92→  ),
+    93→  uniform_registry: lazy(() =>
+    94→    import("./views/uniforms-view").then((m) => ({ default: m.UniformsView }))
+    95→  ),
+    96→  notifications: lazy(() =>
+    97→    import("./views/notifications-view").then((m) => ({ default: m.NotificationsView }))
+    98→  ),
+    99→  administrators: lazy(() =>
+   100→    import("./views/administrators-view").then((m) => ({ default: m.AdministratorsView }))
+   101→  ),
+   102→  audit_logs: lazy(() =>
+   103→    import("./views/audit-view").then((m) => ({ default: m.AuditView }))
+   104→  ),
+   105→  settings: lazy(() =>
+   106→    import("./views/settings-view").then((m) => ({ default: m.SettingsView }))
+   107→  ),
+   108→};
+   109→
+   110→const VIEW_TITLES: Record<AppView, string> = {
+   111→  dashboard: "Dashboard",
+   112→  employees: "Employees",
+   113→  sites: "Sites",
+   114→  attendance: "Attendance",
+   115→  leave_requests: "Leave Requests",
+   116→  cancellation_requests: "Cancellations",
+   117→  warnings: "Warnings",
+   118→  fines: "Fines",
+   119→  uniform_registry: "Uniform Registry",
+   120→  notifications: "Notifications",
+   121→  administrators: "Administrators",
+   122→  audit_logs: "Audit Logs",
+   123→  settings: "Settings",
+   124→};
+   125→
+   126→type NavItem = { key: AppView; label: string; icon: LucideIcon };
+   127→
+   128→const NAV_SECTIONS: { label: string; items: NavItem[] }[] = [
+   129→  {
+   130→    label: "Main",
+   131→    items: [
+   132→      { key: "dashboard", label: "Dashboard", icon: LayoutDashboard },
+   133→      { key: "employees", label: "Employees", icon: Users },
+   134→      { key: "sites", label: "Sites", icon: MapPin },
+   135→      { key: "attendance", label: "Attendance", icon: CalendarCheck },
+   136→    ],
+   137→  },
+   138→  {
+   139→    label: "Requests",
+   140→    items: [
+   141→      { key: "leave_requests", label: "Leave Requests", icon: CalendarOff },
+   142→      { key: "cancellation_requests", label: "Cancellations", icon: UserX },
+   143→      { key: "warnings", label: "Warnings", icon: AlertTriangle },
+   144→      { key: "fines", label: "Fines", icon: Receipt },
+   145→    ],
+   146→  },
+   147→  {
+   148→    label: "Operations",
+   149→    items: [{ key: "uniform_registry", label: "Uniform Registry", icon: Shirt }],
+   150→  },
+   151→  {
+   152→    label: "Administration",
+   153→    items: [
+   154→      { key: "notifications", label: "Notifications", icon: Bell },
+   155→      { key: "administrators", label: "Administrators", icon: ShieldCheck },
+   156→      { key: "audit_logs", label: "Audit Logs", icon: ScrollText },
+   157→      { key: "settings", label: "Settings", icon: Settings },
+   158→    ],
+   159→  },
+   160→];
+   161→
+   162→const SIDEBAR_COLLAPSE_KEY = "asm.sidebar.collapsed";
+   163→
+   164→function initialsOf(fullName: string): string {
+   165→  return fullName
+   166→    .split(/\s+/)
+   167→    .filter(Boolean)
+   168→    .map((w) => w[0])
+   169→    .slice(0, 2)
+   170→    .join("")
+   171→    .toUpperCase();
+   172→}
+   173→
+   174→// ---------------------------------------------------------------------------
+   175→// Sidebar navigation (shared by desktop rail and mobile drawer)
+   176→// ---------------------------------------------------------------------------
+   177→
+   178→function NavButton({
+   179→  item,
+   180→  active,
+   181→  collapsed,
+   182→  badge,
+   183→  onClick,
+   184→}: {
+   185→  item: NavItem;
+   186→  active: boolean;
+   187→  collapsed: boolean;
+   188→  badge?: number;
+   189→  onClick: () => void;
+   190→}) {
+   191→  const showBadge = typeof badge === "number" && badge > 0;
+   192→  return (
+   193→    <button
+   194→      type="button"
+   195→      onClick={onClick}
+   196→      title={collapsed ? item.label : undefined}
+   197→      aria-current={active ? "page" : undefined}
+   198→      className={cn(
+   199→        "relative flex min-h-10 w-full items-center gap-3 rounded-lg px-3 text-sm font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-emerald-400/60",
+   200→        active
+   201→          ? "bg-emerald-500/15 text-emerald-300 shadow-[inset_2px_0_0_0_#34d399]"
+   202→          : "text-zinc-400 hover:bg-zinc-800/70 hover:text-zinc-100",
+   203→        collapsed && "justify-center px-0"
+   204→      )}
+   205→    >
+   206→      <item.icon className="h-[18px] w-[18px] shrink-0" />
+   207→      {!collapsed && <span className="min-w-0 flex-1 truncate text-left">{item.label}</span>}
+   208→      {showBadge &&
+   209→        (collapsed ? (
+   210→          <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-rose-400 ring-2 ring-zinc-900" />
+   211→        ) : (
+   212→          <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-500 px-1.5 text-[10px] font-bold text-white">
+   213→            {badge! > 99 ? "99+" : badge}
+   214→          </span>
+   215→        ))}
+   216→    </button>
+   217→  );
+   218→}
+   219→
+   220→function SidebarNav({
+   221→  view,
+   222→  user,
+   223→  collapsed,
+   224→  unreadCount,
+   225→  onNavigate,
+   226→}: {
+   227→  view: AppView;
+   228→  user: AuthUser;
+   229→  collapsed: boolean;
+   230→  unreadCount: number;
+   231→  onNavigate: (view: AppView) => void;
+   232→}) {
+   233→  const can = useCallback(
+   234→    (key: AppView) =>
+   235→      user.role === "super_admin" || user.permissions?.[key] === true,
+   236→    [user]
+   237→  );
+   238→
+   239→  return (
+   240→    <nav
+   241→      aria-label="Main navigation"
+   242→      className="flex-1 space-y-1 overflow-y-auto overflow-x-hidden px-2 py-3"
+   243→    >
+   244→      {NAV_SECTIONS.map((section) => {
+   245→        const items = section.items.filter((i) => can(i.key));
+   246→        if (items.length === 0) return null;
+   247→        return (
+   248→          <div key={section.label} className="pb-1">
+   249→            {!collapsed && (
+   250→              <p className="px-3 pb-1.5 pt-4 text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-500">
+   251→                {section.label}
+   252→              </p>
+   253→            )}
+   254→            {collapsed && <div className="mx-3 my-3 border-t border-zinc-800" />}
+   255→            <div className="space-y-0.5">
+   256→              {items.map((item) => (
+   257→                <NavButton
+   258→                  key={item.key}
+   259→                  item={item}
+   260→                  active={view === item.key}
+   261→                  collapsed={collapsed}
+   262→                  badge={item.key === "notifications" ? unreadCount : undefined}
+   263→                  onClick={() => onNavigate(item.key)}
+   264→                />
+   265→              ))}
+   266→            </div>
+   267→          </div>
+   268→        );
+   269→      })}
+   270→    </nav>
+   271→  );
+   272→}
+   273→
+   274→function SidebarBrand({ collapsed }: { collapsed: boolean }) {
+   275→  return (
+   276→    <div
+   277→      className={cn(
+   278→        "flex h-16 shrink-0 items-center gap-3 border-b border-zinc-800 px-4",
+   279→        collapsed && "justify-center px-0"
+   280→      )}
+   281→    >
+   282→      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-emerald-400 to-emerald-600 text-zinc-950 shadow-lg shadow-emerald-950/40">
+   283→        <HardHat className="h-5 w-5" />
+   284→      </div>
+   285→      {!collapsed && (
+   286→        <div className="min-w-0">
+   287→          <p className="truncate text-sm font-bold tracking-tight text-white">
+   288→            ASM Manpower
+   289→          </p>
+   290→          <p className="truncate text-[11px] text-zinc-400">
+   291→            Manpower Solutions
+   292→          </p>
+   293→        </div>
+   294→      )}
+   295→    </div>
+   296→  );
+   297→}
+   298→
+   299→// ---------------------------------------------------------------------------
+   300→// Header widgets
+   301→// ---------------------------------------------------------------------------
+   302→
+   303→function ThemeToggle() {
+   304→  const { resolvedTheme, setTheme } = useTheme();
+   305→  // AppShell only renders client-side (after the session boot effect in
+   306→  // page.tsx), so resolvedTheme is available without a hydration guard.
+   307→  const dark = resolvedTheme === "dark";
+   308→  return (
+   309→    <Button
+   310→      variant="ghost"
+   311→      size="icon"
+   312→      className="h-10 w-10"
+   313→      aria-label={dark ? "Switch to light mode" : "Switch to dark mode"}
+   314→      onClick={() => setTheme(dark ? "light" : "dark")}
+   315→    >
+   316→      <Sun
+   317→        className={cn(
+   318→          "h-[18px] w-[18px] transition-transform duration-300",
+   319→          dark ? "scale-100 rotate-0" : "scale-0 -rotate-90 absolute"
+   320→        )}
+   321→      />
+   322→      <Moon
+   323→        className={cn(
+   324→          "h-[18px] w-[18px] transition-transform duration-300",
+   325→          dark ? "scale-0 rotate-90 absolute" : "scale-100 rotate-0"
+   326→        )}
+   327→      />
+   328→    </Button>
+   329→  );
+   330→}
+   331→
+   332→function UserMenu({ user, onLogout }: { user: AuthUser; onLogout: () => void }) {
+   333→  const { theme, setTheme } = useTheme();
+   334→  return (
+   335→    <DropdownMenu>
+   336→      <DropdownMenuTrigger asChild>
+   337→        <button
+   338→          type="button"
+   339→          aria-label="Open user menu"
+   340→          className="flex h-10 items-center gap-2 rounded-full pl-1 pr-1.5 transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:pr-2"
+   341→        >
+   342→          <Avatar className="h-8 w-8 border border-border/80">
+   343→            <AvatarFallback className="bg-emerald-500/10 text-xs font-bold text-emerald-700 dark:text-emerald-400">
+   344→              {initialsOf(user.fullName)}
+   345→            </AvatarFallback>
+   346→          </Avatar>
+   347→          <span className="hidden max-w-32 truncate text-sm font-medium md:inline">
+   348→            {user.fullName}
+   349→          </span>
+   350→          <ChevronDown className="hidden h-3.5 w-3.5 text-muted-foreground md:inline" />
+   351→        </button>
+   352→      </DropdownMenuTrigger>
+   353→      <DropdownMenuContent align="end" className="w-64">
+   354→        <DropdownMenuLabel className="font-normal">
+   355→          <p className="truncate text-sm font-semibold">{user.fullName}</p>
+   356→          <p className="truncate text-xs text-muted-foreground">{user.email}</p>
+   357→          <span className="mt-1.5 inline-flex items-center gap-1 rounded-md bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-400">
+   358→            <ShieldCheck className="h-3 w-3" />
+   359→            {user.role === "super_admin" ? "Super Admin" : "Administrator"}
+   360→          </span>
+   361→        </DropdownMenuLabel>
+   362→        <DropdownMenuSeparator />
+   363→        <DropdownMenuSub>
+   364→          <DropdownMenuSubTrigger>
+   365→            <SunMoon className="mr-1 h-4 w-4" />
+   366→            Theme
+   367→          </DropdownMenuSubTrigger>
+   368→          <DropdownMenuSubContent>
+   369→            <DropdownMenuRadioGroup
+   370→              value={theme ?? "light"}
+   371→              onValueChange={(v) => setTheme(v)}
+   372→            >
+   373→              <DropdownMenuRadioItem value="light">
+   374→                <Sun className="mr-1.5 h-4 w-4" /> Light
+   375→              </DropdownMenuRadioItem>
+   376→              <DropdownMenuRadioItem value="dark">
+   377→                <Moon className="mr-1.5 h-4 w-4" /> Dark
+   378→              </DropdownMenuRadioItem>
+   379→            </DropdownMenuRadioGroup>
+   380→          </DropdownMenuSubContent>
+   381→        </DropdownMenuSub>
+   382→        <DropdownMenuSeparator />
+   383→        <DropdownMenuItem variant="destructive" onClick={() => onLogout()}>
+   384→          <LogOut className="mr-1.5 h-4 w-4" />
+   385→          Log out
+   386→        </DropdownMenuItem>
+   387→      </DropdownMenuContent>
+   388→    </DropdownMenu>
+   389→  );
+   390→}
+   391→
+   392→function NotificationsBell({ onNavigate }: { onNavigate: (view: AppView) => void }) {
+   393→  const unreadCount = useAppStore((s) => s.unreadCount);
+   394→  const notifVersion = useAppStore((s) => s.notifVersion);
+   395→  const bumpNotifVersion = useAppStore((s) => s.bumpNotifVersion);
+   396→  const [open, setOpen] = useState(false);
+   397→  const [items, setItems] = useState<NotificationRecord[] | null>(null);
+   398→  const [loading, setLoading] = useState(false);
+   399→  const [markingAll, setMarkingAll] = useState(false);
+   400→
+   401→  const fetchList = useCallback(async () => {
+   402→    setLoading(true);
+   403→    try {
+   404→      const data = await apiGet<NotificationRecord[]>("/api/notifications");
+   405→      setItems(Array.isArray(data) ? data.slice(0, 8) : []);
+   406→    } catch {
+   407→      setItems([]);
+   408→    } finally {
+   409→      setLoading(false);
+   410→    }
+   411→  }, []);
+   412→
+   413→  useEffect(() => {
+   414→    if (open) void fetchList();
+   415→  }, [open, notifVersion, fetchList]);
+   416→
+   417→  const openNotification = async (n: NotificationRecord) => {
+   418→    setOpen(false);
+   419→    if (!n.read) {
+   420→      try {
+   421→        await apiPost(`/api/notifications/${n.id}/read`);
+   422→        bumpNotifVersion();
+   423→      } catch {
+   424→        /* non-fatal */
+   425→      }
+   426→    }
+   427→    onNavigate(notifTargetView(n.referenceType));
+   428→  };
+   429→
+   430→  const markAllRead = async () => {
+   431→    setMarkingAll(true);
+   432→    try {
+   433→      await apiPost("/api/notifications/read-all");
+   434→      bumpNotifVersion();
+   435→      await fetchList();
+   436→      toast.success("All notifications marked as read");
+   437→    } catch (err) {
+   438→      toast.error(
+   439→        err instanceof Error ? err.message : "Could not mark notifications as read"
+   440→      );
+   441→    } finally {
+   442→      setMarkingAll(false);
+   443→    }
+   444→  };
+   445→
+   446→  const hasUnread = (items ?? []).some((n) => !n.read);
+   447→
+   448→  return (
+   449→    <Popover open={open} onOpenChange={setOpen}>
+   450→      <PopoverTrigger asChild>
+   451→        <Button
+   452→          variant="ghost"
+   453→          size="icon"
+   454→          className="relative h-10 w-10"
+   455→          aria-label={`Notifications${unreadCount > 0 ? ` — ${unreadCount} unread` : ""}`}
+   456→        >
+   457→          <Bell className="h-[18px] w-[18px]" />
+   458→          {unreadCount > 0 && (
+   459→            <motion.span
+   460→              key={unreadCount}
+   461→              initial={{ scale: 0.5, opacity: 0 }}
+   462→              animate={{ scale: 1, opacity: 1 }}
+   463→              transition={{ type: "spring", stiffness: 500, damping: 22 }}
+   464→              className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-bold leading-none text-white ring-2 ring-background"
+   465→            >
+   466→              {unreadCount > 99 ? "99+" : unreadCount}
+   467→            </motion.span>
+   468→          )}
+   469→        </Button>
+   470→      </PopoverTrigger>
+   471→      <PopoverContent align="end" className="w-80 p-0 sm:w-96">
+   472→        <div className="flex items-center justify-between gap-2 border-b px-4 py-3">
+   473→          <p className="text-sm font-semibold">Notifications</p>
+   474→          <Button
+   475→            variant="ghost"
+   476→            size="sm"
+   477→            className="h-8 px-2 text-xs"
+   478→            disabled={!hasUnread || markingAll}
+   479→            onClick={markAllRead}
+   480→          >
+   481→            {markingAll ? (
+   482→              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+   483→            ) : (
+   484→              <CheckCheck className="h-3.5 w-3.5" />
+   485→            )}
+   486→            Mark all read
+   487→          </Button>
+   488→        </div>
+   489→
+   490→        <div className="max-h-96 overflow-y-auto">
+   491→          {loading && items === null ? (
+   492→            <div className="space-y-3 p-4">
+   493→              {[0, 1, 2].map((i) => (
+   494→                <div key={i} className="flex gap-3">
+   495→                  <Skeleton className="h-9 w-9 shrink-0 rounded-lg" />
+   496→                  <div className="flex-1 space-y-1.5">
+   497→                    <Skeleton className="h-3.5 w-3/4" />
+   498→                    <Skeleton className="h-3 w-1/2" />
+   499→                  </div>
+   500→                </div>
+   501→              ))}
+   502→            </div>
+   503→          ) : !items || items.length === 0 ? (
+   504→            <div className="flex flex-col items-center gap-2 px-4 py-10 text-center">
+   505→              <BellOff className="h-7 w-7 text-muted-foreground/60" />
+   506→              <p className="text-sm font-medium">No notifications</p>
+   507→              <p className="text-xs text-muted-foreground">
+   508→                You&apos;re all caught up for now.
+   509→              </p>
+   510→            </div>
+   511→          ) : (
+   512→            <ul className="divide-y">
+   513→              {items.map((n) => {
+   514→                const meta = notifMeta(n.type);
+   515→                return (
+   516→                  <li key={n.id}>
+   517→                    <button
+   518→                      type="button"
+   519→                      onClick={() => openNotification(n)}
+   520→                      className={cn(
+   521→                        "flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-accent/60",
+   522→                        !n.read && "bg-emerald-500/[0.06]"
+   523→                      )}
+   524→                    >
+   525→                      <span
+   526→                        className={cn(
+   527→                          "mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg",
+   528→                          meta.boxClass
+   529→                        )}
+   530→                      >
+   531→                        <meta.icon className="h-4 w-4" />
+   532→                      </span>
+   533→                      <span className="min-w-0 flex-1">
+   534→                        <span className="flex items-center gap-2">
+   535→                          <span className="min-w-0 flex-1 truncate text-sm font-medium">
+   536→                            {n.title}
+   537→                          </span>
+   538→                          {!n.read && (
+   539→                            <span
+   540→                              className="h-2 w-2 shrink-0 rounded-full bg-emerald-500"
+   541→                              aria-label="Unread"
+   542→                            />
+   543→                          )}
+   544→                        </span>
+   545→                        <span className="mt-0.5 line-clamp-2 block text-xs leading-relaxed text-muted-foreground">
+   546→                          {n.message}
+   547→                        </span>
+   548→                        <span className="mt-1 block text-[11px] text-muted-foreground/70">
+   549→                          {safeRelative(n.createdAt)}
+   550→                        </span>
+   551→                      </span>
+   552→                    </button>
+   553→                  </li>
+   554→                );
+   555→              })}
+   556→            </ul>
+   557→          )}
+   558→        </div>
+   559→
+   560→        <div className="border-t p-2">
+   561→          <Button
+   562→            variant="ghost"
+   563→            size="sm"
+   564→            className="w-full text-xs font-medium text-emerald-700 hover:text-emerald-800 dark:text-emerald-400 dark:hover:text-emerald-300"
+   565→            onClick={() => {
+   566→              setOpen(false);
+   567→              onNavigate("notifications");
+   568→            }}
+   569→          >
+   570→            View all notifications
+   571→          </Button>
+   572→        </div>
+   573→      </PopoverContent>
+   574→    </Popover>
+   575→  );
+   576→}
+   577→
+   578→function safeRelative(iso: string): string {
+   579→  try {
+   580→    return formatDistanceToNow(parseISO(iso), { addSuffix: true });
+   581→  } catch {
+   582→    return "";
+   583→  }
+   584→}
+   585→
+   586→// ---------------------------------------------------------------------------
+   587→// Suspense / access fallbacks
+   588→// ---------------------------------------------------------------------------
+   589→
+   590→function ViewSkeleton() {
+   591→  return (
+   592→    <div className="space-y-6 p-4 sm:p-6">
+   593→      <div className="space-y-2">
+   594→        <Skeleton className="h-7 w-56" />
+   595→        <Skeleton className="h-4 w-72 max-w-full" />
+   596→      </div>
+   597→      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-4">
+   598→        {Array.from({ length: 8 }).map((_, i) => (
+   599→          <Skeleton key={i} className="h-[88px] rounded-xl" />
+   600→        ))}
+   601→      </div>
+   602→      <Skeleton className="h-72 rounded-xl" />
+   603→    </div>
+   604→  );
+   605→}
+   606→
+   607→function AccessDenied() {
+   608→  return (
+   609→    <div className="p-4 sm:p-6">
+   610→      <EmptyState
+   611→        icon={Lock}
+   612→        title="No access"
+   613→        description="You don't have permission to open this section. Contact a super administrator if you need access."
+   614→      />
+   615→    </div>
+   616→  );
+   617→}
+   618→
+   619→// ---------------------------------------------------------------------------
+   620→// AppShell
+   621→// ---------------------------------------------------------------------------
+   622→
+   623→export function AppShell({ user, onLogout }: { user: AuthUser; onLogout: () => void }) {
+   624→  const view = useAppStore((s) => s.view);
+   625→  const navigate = useAppStore((s) => s.navigate);
+   626→  const unreadCount = useAppStore((s) => s.unreadCount);
+   627→  const setUnreadCount = useAppStore((s) => s.setUnreadCount);
+   628→  const notifVersion = useAppStore((s) => s.notifVersion);
+   629→
+   630→  const [collapsed, setCollapsed] = useState(() => {
+   631→    // lazy initializer — restores the persisted preference without an
+   632→    // extra effect pass (AppShell never renders on the server)
+   633→    if (typeof window === "undefined") return false;
+   634→    try {
+   635→      return window.localStorage.getItem(SIDEBAR_COLLAPSE_KEY) === "1";
+   636→    } catch {
+   637→      return false;
+   638→    }
+   639→  });
+   640→  const [mobileOpen, setMobileOpen] = useState(false);
+   641→
+   642→  const toggleCollapsed = () => {
+   643→    setCollapsed((c) => {
+   644→      const next = !c;
+   645→      try {
+   646→        window.localStorage.setItem(SIDEBAR_COLLAPSE_KEY, next ? "1" : "0");
+   647→      } catch {
+   648→        /* ignore */
+   649→      }
+   650→      return next;
+   651→    });
+   652→  };
+   653→
+   654→  // ---- unread notification count: on mount, every 30s, and on refresh signal
+   655→  const refreshUnread = useCallback(async () => {
+   656→    try {
+   657→      const res = await apiGet<{ count: number }>("/api/notifications/unread-count");
+   658→      setUnreadCount(typeof res?.count === "number" ? res.count : 0);
+   659→    } catch {
+   660→      /* backend may be transiently unavailable — keep last known count */
+   661→    }
+   662→  }, [setUnreadCount]);
+   663→
+   664→  useEffect(() => {
+   665→    void refreshUnread();
+   666→  }, [refreshUnread, notifVersion]);
+   667→
+   668→  useEffect(() => {
+   669→    const id = setInterval(() => void refreshUnread(), 30_000);
+   670→    return () => clearInterval(id);
+   671→  }, [refreshUnread]);
+   672→
+   673→  const handleNavigate = useCallback(
+   674→    (target: AppView) => {
+   675→      navigate(target);
+   676→      setMobileOpen(false);
+   677→    },
+   678→    [navigate]
+   679→  );
+   680→
+   681→  const canView =
+   682→    user.role === "super_admin" || user.permissions?.[view] === true;
+   683→
+   684→  const ActiveView = Views[view];
+   685→  const year = new Date().getFullYear();
+   686→
+   687→  return (
+   688→    <div className="min-h-screen bg-background">
+   689→      {/* sonner Toaster — the layout currently mounts the radix toaster only,
+   690→          so sonner toasts need this mount to be visible anywhere in the app. */}
+   691→      <Toaster position="top-right" richColors closeButton />
+   692→
+   693→      {/* ---------------- desktop sidebar (fixed rail) ---------------- */}
+   694→      <aside
+   695→        className={cn(
+   696→          "fixed inset-y-0 left-0 z-40 hidden flex-col border-r border-zinc-800 bg-zinc-900 text-zinc-100 transition-[width] duration-200 lg:flex",
+   697→          collapsed ? "w-14" : "w-60"
+   698→        )}
+   699→      >
+   700→        <SidebarBrand collapsed={collapsed} />
+   701→        <SidebarNav
+   702→          view={view}
+   703→          user={user}
+   704→          collapsed={collapsed}
+   705→          unreadCount={unreadCount}
+   706→          onNavigate={handleNavigate}
+   707→        />
+   708→        <div className="shrink-0 border-t border-zinc-800 p-2">
+   709→          <button
+   710→            type="button"
+   711→            onClick={toggleCollapsed}
+   712→            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+   713→            title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+   714→            className="flex min-h-10 w-full items-center justify-center gap-2 rounded-lg text-zinc-500 transition-colors hover:bg-zinc-800/70 hover:text-zinc-200"
+   715→          >
+   716→            {collapsed ? (
+   717→              <PanelLeftOpen className="h-[18px] w-[18px]" />
+   718→            ) : (
+   719→              <>
+   720→                <PanelLeftClose className="h-[18px] w-[18px]" />
+   721→                <span className="text-xs font-medium">Collapse</span>
+   722→              </>
+   723→            )}
+   724→          </button>
+   725→        </div>
+   726→      </aside>
+   727→
+   728→      {/* ---------------- mobile drawer ---------------- */}
+   729→      <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
+   730→        <SheetContent
+   731→          side="left"
+   732→          className="w-72 gap-0 border-r-0 bg-zinc-900 p-0 text-zinc-100 [&>button:last-child]:text-zinc-400 hover:[&>button:last-child]:text-zinc-100"
+   733→        >
+   734→          <SheetTitle asChild>
+   735→            <div>
+   736→              <SidebarBrand collapsed={false} />
+   737→            </div>
+   738→          </SheetTitle>
+   739→          <SidebarNav
+   740→            view={view}
+   741→            user={user}
+   742→            collapsed={false}
+   743→            unreadCount={unreadCount}
+   744→            onNavigate={handleNavigate}
+   745→          />
+   746→          <div className="shrink-0 border-t border-zinc-800 p-4">
+   747→            <div className="flex items-center gap-3">
+   748→              <Avatar className="h-9 w-9 border border-zinc-700">
+   749→                <AvatarFallback className="bg-emerald-500/10 text-xs font-bold text-emerald-400">
+   750→                  {initialsOf(user.fullName)}
+   751→                </AvatarFallback>
+   752→              </Avatar>
+   753→              <div className="min-w-0">
+   754→                <p className="truncate text-sm font-semibold text-white">
+   755→                  {user.fullName}
+   756→                </p>
+   757→                <p className="truncate text-xs text-zinc-400">{user.email}</p>
+   758→              </div>
+   759→            </div>
+   760→          </div>
+   761→        </SheetContent>
+   762→      </Sheet>
+   763→
+   764→      {/* ---------------- content column ---------------- */}
+   765→      <div
+   766→        className={cn(
+   767→          "flex min-h-screen flex-col transition-[padding] duration-200",
+   768→          collapsed ? "lg:pl-14" : "lg:pl-60"
+   769→        )}
+   770→      >
+   771→        <header className="sticky top-0 z-30 flex h-16 items-center gap-1.5 border-b bg-background/85 px-3 backdrop-blur sm:gap-3 sm:px-6">
+   772→          <Button
+   773→            variant="ghost"
+   774→            size="icon"
+   775→            className="h-10 w-10 lg:hidden"
+   776→            aria-label="Open navigation menu"
+   777→            onClick={() => setMobileOpen(true)}
+   778→          >
+   779→            <Menu className="h-5 w-5" />
+   780→          </Button>
+   781→
+   782→          <div className="min-w-0 flex-1">
+   783→            <p className="hidden text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground sm:block">
+   784→              ASM Manpower Solutions
+   785→            </p>
+   786→            <h1 className="truncate text-base font-bold tracking-tight sm:text-lg">
+   787→              {VIEW_TITLES[view] ?? "Dashboard"}
+   788→            </h1>
+   789→          </div>
+   790→
+   791→          <div className="flex shrink-0 items-center gap-0.5 sm:gap-1">
+   792→            <NotificationsBell onNavigate={handleNavigate} />
+   793→            <ThemeToggle />
+   794→            <UserMenu user={user} onLogout={onLogout} />
+   795→          </div>
+   796→        </header>
+   797→
+   798→        <main className="flex-1">
+   799→          <AnimatePresence mode="wait" initial={false}>
+   800→            <motion.div
+   801→              key={view}
+   802→              initial={{ opacity: 0, y: 10 }}
+   803→              animate={{ opacity: 1, y: 0 }}
+   804→              exit={{ opacity: 0, y: -8 }}
+   805→              transition={{ duration: 0.18, ease: "easeOut" }}
+   806→            >
+   807→              <Suspense fallback={<ViewSkeleton />}>
+   808→                {canView ? <ActiveView /> : <AccessDenied />}
+   809→              </Suspense>
+   810→            </motion.div>
+   811→          </AnimatePresence>
+   812→        </main>
+   813→
+   814→        <footer className="mt-auto border-t bg-background/60 px-4 py-4 pb-[calc(1rem+env(safe-area-inset-bottom))] sm:px-6">
+   815→          <div className="flex flex-col items-center justify-between gap-1.5 text-center sm:flex-row sm:text-left">
+   816→            <p className="text-xs text-muted-foreground">
+   817→              © {year} ASM Manpower Solutions — Manpower Management System
+   818→            </p>
+   819→            <p className="text-[11px] text-muted-foreground/70">
+   820→              Powered by ASM Platform
+   821→            </p>
+   822→          </div>
+   823→        </footer>
+   824→      </div>
+   825→    </div>
+   826→  );
+   827→}
+   828→
+   829→export default AppShell;
+   830→

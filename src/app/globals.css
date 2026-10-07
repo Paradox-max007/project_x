@@ -120,3 +120,47 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Slim, sleek, modern scrollbar — theme-centric emerald accent (ASM brand).
+   Apply via `scrollbar-slim` on any scrollable container.
+   - Ultra-thin pill-shaped thumb (4px) that brightens on hover / drag
+   - Transparent track, no arrows, no layout-jarring width changes
+   - Firefox: native thin scrollbar + emerald scrollbar-color
+   --------------------------------------------------------------------------- */
+.scrollbar-slim {
+  /* Firefox */
+  scrollbar-width: thin;
+  scrollbar-color: rgb(52 211 153 / 0.4) transparent;
+}
+
+.scrollbar-slim:hover {
+  scrollbar-color: rgb(52 211 153 / 0.65) transparent;
+}
+
+/* Chromium / Safari / Edge */
+.scrollbar-slim::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+.scrollbar-slim::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollbar-slim::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+.scrollbar-slim::-webkit-scrollbar-thumb {
+  background-color: rgb(52 211 153 / 0.35);
+  border-radius: 9999px;
+}
+
+.scrollbar-slim::-webkit-scrollbar-thumb:hover {
+  background-color: rgb(52 211 153 / 0.7);
+}
+
+.scrollbar-slim::-webkit-scrollbar-thumb:active {
+  background-color: rgb(52 211 153 / 0.95);
+}

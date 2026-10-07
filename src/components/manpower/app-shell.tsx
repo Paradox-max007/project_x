@@ -239,7 +239,7 @@ function SidebarNav({
   return (
     <nav
       aria-label="Main navigation"
-      className="flex-1 space-y-1 overflow-y-auto overflow-x-hidden px-2 py-3"
+      className="scrollbar-slim flex-1 space-y-1 overflow-y-auto overflow-x-hidden px-2 py-3"
     >
       {NAV_SECTIONS.map((section) => {
         const items = section.items.filter((i) => can(i.key));
